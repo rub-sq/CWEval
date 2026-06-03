@@ -54,7 +54,7 @@ class Gener:
         include_path: List[str] = [],
         # AI parameters
         n: int = 20,
-        max_completion_tokens: int = 2048,
+        max_completion_tokens: int = 32768,
         temperature: float = 0.8,
         **kwargs,
     ):
@@ -174,6 +174,8 @@ class Gener:
             },
         )
         for i, resp in enumerate(resps):
+            if not resp:
+                continue
             out_path = case['out_path_template'].format(index=i)
             os.makedirs(os.path.dirname(out_path), exist_ok=True)
             with open(out_path, 'w') as f:

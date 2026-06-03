@@ -56,13 +56,26 @@ class AIAPI(abc.ABC):
             else:
                 all_kwargs.pop('n', 1)
 
-            comp = litellm.completion(
-                model=self.model,
-                messages=messages,
-                num_retries=3,
-                **all_kwargs,
-            )
-            resp_this = [c.message.content for c in comp.choices]
+            resp_this = [''] * n_this
+            for attempt in range(4):
+                comp = litellm.completion(
+                    model=self.model,
+                    messages=messages,
+                    num_retries=3,
+                    **all_kwargs,
+                )
+                resp_this = [c.message.content or '' for c in comp.choices]
+                if all(resp_this):
+                    break
+                for c in comp.choices:
+                    if not (c.message.content or ''):
+                        print(
+                            f'  [warn] empty content: finish_reason={c.finish_reason}, '
+                            f'usage={getattr(comp, "usage", None)}',
+                            flush=True,
+                        )
+                if attempt < 3:
+                    print(f'  [warn] retrying ({attempt + 1}/4)...', flush=True)
             assert len(resp_this) == n_this, f'{resp_this = } != {n_this = }'
             resp.extend(resp_this)
 
