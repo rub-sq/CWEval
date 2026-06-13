@@ -180,6 +180,18 @@ class Gener:
             os.makedirs(os.path.dirname(out_path), exist_ok=True)
             with open(out_path, 'w') as f:
                 f.write(resp)
+            # token-usage sidecar; the '_meta.' name contains neither '_raw.' nor '_task.'
+            # so evaluate.py / pytest ignore it and the func@k pipeline is unaffected
+            meta = {
+                'model': ai,
+                'lang': case['lang'],
+                'task_file_path': case.get('task_file_path'),
+                'sample_index': i,
+                **(aiapi.usages[i] if i < len(aiapi.usages) else {}),
+            }
+            meta_path = out_path.replace('_raw.', '_meta.') + '.json'
+            with open(meta_path, 'w') as f:
+                json.dump(meta, f)
 
     def gen(self) -> None:
         p_map(
