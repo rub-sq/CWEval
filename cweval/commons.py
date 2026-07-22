@@ -1,5 +1,6 @@
 import multiprocessing as mp
 import os
+import re
 import subprocess
 import tempfile
 from typing import Any, Callable, List, Tuple
@@ -178,6 +179,43 @@ def complete_code(code: str, lang: str) -> str:
         return code
 
 
+# closing tags of visible reasoning sections emitted by some models
+REASONING_END_RE = re.compile(r'</think>|</mm:think>', re.IGNORECASE)
+
+
+def strip_reasoning(msg: str) -> str:
+    # drop everything up to and including the last reasoning end tag,
+    # so that draft code blocks inside the reasoning are not extracted
+    matches = list(REASONING_END_RE.finditer(msg))
+    if not matches:
+        return msg
+    stripped = msg[matches[-1].end() :]
+    if not stripped.strip():
+        return msg
+    return stripped
+
+
+def get_code_blocks(msg: str, add_new_line: bool = False) -> List[str]:
+    tail = '\n' if add_new_line else ''
+    code_blocks: List[str] = []
+    code_lines: List[str] | None = None  # None = outside a code block
+    for line in msg.splitlines():
+        # tolerate leading whitespace before the fence
+        if line.lstrip().startswith('```'):
+            if code_lines is None:
+                code_lines = []
+            else:
+                code_blocks.append('\n'.join(code_lines) + tail)
+                code_lines = None
+            continue
+        if code_lines is not None:
+            code_lines.append(line)
+    # end of message closes an unterminated block (e.g. truncated response)
+    if code_lines:
+        code_blocks.append('\n'.join(code_lines) + tail)
+    return code_blocks
+
+
 def get_code_from(
     msg: str,
     only_last: bool = False,
@@ -187,31 +225,30 @@ def get_code_from(
     assert not (
         only_last and only_first
     ), '`only_last` and `only_first` cannot be both True'
-    tail = '\n' if add_new_line else ''
-    code_blocks: List[str] = []
-    msg_lines = msg.splitlines()
-    i_line = 0
-    while i_line < len(msg_lines):
-        line = msg_lines[i_line]
-        if line.startswith('```'):
-            code_lines = []
-            i_line += 1
-            while i_line < len(msg_lines):
-                line = msg_lines[i_line]
-                if line.startswith('```'):
-                    break
-                code_lines.append(line)
-                i_line += 1
-            # end while for this code block
-            code_blocks.append('\n'.join(code_lines) + tail)
-            if only_first:
-                return code_blocks[0]
-        # end if for this code block
-        i_line += 1
-    # end while for all code blocks
+    code_blocks = get_code_blocks(msg, add_new_line=add_new_line)
+    if not code_blocks:
+        return ''
+    if only_first:
+        return code_blocks[0]
     if only_last:
         return code_blocks[-1]
     return '\n'.join(code_blocks)
+
+
+def select_code_block(msg: str, entrypoint: str = '') -> str:
+    # pick the code block holding the final answer of a response
+    answer = strip_reasoning(msg)
+    code_blocks = get_code_blocks(answer)
+    if not code_blocks:
+        return answer
+    if entrypoint and len(code_blocks) > 1:
+        # among multiple blocks, the last one defining the required
+        # entrypoint is the final revision
+        pattern = re.compile(rf'^\s*def {re.escape(entrypoint)}\b', re.MULTILINE)
+        candidates = [block for block in code_blocks if pattern.search(block)]
+        if candidates:
+            return candidates[-1]
+    return code_blocks[0]
 
 
 def run_in_subprocess(func: Callable[..., Any], *args, **kwargs) -> Any:

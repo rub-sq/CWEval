@@ -26,6 +26,7 @@ import json
 import math
 import multiprocessing as mp
 import os
+import re
 import shutil
 from typing import Dict, List, Tuple
 
@@ -40,9 +41,9 @@ from cweval.commons import (
     LANGS_COMPILE,
     compile_list,
     complete_code,
-    get_code_from,
     pass_at_k,
     run_in_subprocess,
+    select_code_block,
 )
 from cweval.run_tests import TestFileResult, run_tests
 from cweval.sandbox import Container
@@ -94,10 +95,6 @@ class Evaler:
         with open(raw_file_path, 'r') as f:
             raw_str = f.read()
 
-        raw_code = get_code_from(raw_str, only_first=True)
-        if not raw_code:
-            raw_code = raw_str
-
         # get the entrypoint from the corresponding task file
         for generated_path in self.generated_paths:
             if raw_file_path.startswith(generated_path.rstrip('/') + '/'):
@@ -108,6 +105,17 @@ class Evaler:
         )
         with open(ref_task_file_path, 'r') as ref_task_file:
             ref_task_code = ref_task_file.read()
+
+        # expected entrypoint function name to disambiguate multiple code blocks
+        entrypoint_name = ''
+        if ref_task_file_path.endswith('.py'):
+            def_match = re.search(r'^def (\w+)', ref_task_code, re.MULTILINE)
+            if def_match:
+                entrypoint_name = def_match.group(1)
+
+        raw_code = select_code_block(raw_str, entrypoint_name)
+        if not raw_code.strip():
+            raw_code = raw_str
 
         # TODO hack for python cases
         if self.entrypoint_anchor not in ref_task_code:
