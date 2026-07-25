@@ -2,8 +2,33 @@
 # CLI-compatible ReDoS check via the vendored pure-JS recheck library.
 # Replaces the x86-64 native binary (kept as recheck-linux-x64.x86_64),
 # which cannot run in the arm64 evaluation container.
+#
+# RECHECK_BACKEND=pure keeps the check in-process: the default "auto"
+# backend spawns a long-lived agent child process that can outlive node
+# and hold the output pipe open, which deadlocks the calling test. The
+# output goes through a temp file for the same reason, and the call is
+# bounded by a hard timeout so a stuck check degrades to "unknown"
+# instead of blocking the evaluation.
 if ! command -v node >/dev/null 2>&1; then
     export NVM_DIR="$HOME/.nvm"
     [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" >/dev/null 2>&1
 fi
-exec node "$(dirname "$0")/recheck-js/check.js" "$1"
+
+export RECHECK_BACKEND=pure
+
+out_file=$(mktemp "${TMPDIR:-/tmp}/recheck.XXXXXX")
+trap 'rm -f "$out_file"' EXIT
+
+timeout -k 5 60 node "$(dirname "$0")/recheck-js/check.js" "$1" \
+    >"$out_file" 2>/dev/null </dev/null
+rc=$?
+
+if grep -q '^Status' "$out_file"; then
+    cat "$out_file"
+    exit "$rc"
+fi
+
+# no usable output (timeout or crash): emit a parsable "unknown" verdict
+echo "Input     : $1"
+echo "Status    : unknown"
+exit 1
