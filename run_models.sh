@@ -29,6 +29,11 @@ N="${N:-20}"
 TEMPERATURE="${TEMPERATURE:-0.8}"
 MAX_TOKENS="${MAX_TOKENS:-32768}"
 NUM_PROC="${NUM_PROC:-8}"
+# Caps reasoning-token spend (OpenRouter `reasoning.max_tokens`, forwarded via
+# litellm's extra_body). Applies to ALL models for methodological consistency,
+# not just the ones known to reason heavily - set to "" to disable entirely.
+# See openrouter.ai/docs/guides/best-practices/reasoning-tokens.
+REASONING_MAX_TOKENS="${REASONING_MAX_TOKENS:-8192}"
 
 # ---------------------------------------------------------------------------
 # Model registry  (name -> OpenRouter slug; verified against
@@ -86,19 +91,55 @@ run_model() {
         return 0
     fi
 
-    if python cweval/generate.py gen \
+    # Existing samples are kept: only the shortfall is generated, into a temp
+    # path, then merged in at the next free indices (same trick as
+    # hpc/gen_part_0X.slurm). Without this, generate.py's per-task skip check
+    # only fires when ALL N samples for a task already exist - bumping N and
+    # rerunning would otherwise silently regenerate (overwrite) every sample.
+    local existing_n=0
+    [[ -d "$eval_dir" ]] && existing_n=$(find "$eval_dir" -maxdepth 1 -type d -name 'generated_*' 2>/dev/null | wc -l | tr -d ' ')
+
+    local need_n=$(( N - existing_n ))
+    local gen_dir="$eval_dir"
+    if [[ "$existing_n" -gt 0 ]]; then
+        gen_dir="${eval_dir}_topup"
+        echo "  -> have $existing_n, need $need_n more -> generating into $gen_dir"
+    else
+        echo "  -> generating $need_n samples"
+    fi
+
+    local extra_body_args=()
+    if [[ -n "$REASONING_MAX_TOKENS" ]]; then
+        extra_body_args=(--extra_body "{\"reasoning\": {\"max_tokens\": $REASONING_MAX_TOKENS}}")
+    fi
+
+    # generate.py prompts "overwrite? (y/n)" if --eval_path already exists
+    # (e.g. a leftover _topup dir from a prior crashed run); pipe 'y' so this
+    # never blocks on stdin.
+    if ! echo y | python cweval/generate.py gen \
         --model    "$model" \
-        --n        "$N" \
+        --n        "$need_n" \
         --temperature "$TEMPERATURE" \
         --max_completion_tokens "$MAX_TOKENS" \
         --num_proc "$NUM_PROC" \
         --ppt      direct \
-        --eval_path "$eval_dir"; then
-        echo "  -> $name done"
-    else
+        "${extra_body_args[@]}" \
+        --eval_path "$gen_dir"; then
         echo "  -> $name FAILED" >&2
         return 1
     fi
+
+    if [[ "$gen_dir" != "$eval_dir" ]]; then
+        echo "  -> merging $gen_dir into $eval_dir (indices $existing_n..$((N-1)))"
+        for i in $(seq 0 $(( need_n - 1 ))); do
+            src="$gen_dir/generated_$i"
+            dst="$eval_dir/generated_$(( existing_n + i ))"
+            [[ -d "$src" ]] && mv "$src" "$dst"
+        done
+        rmdir "$gen_dir" 2>/dev/null || true
+    fi
+
+    echo "  -> $name done"
 }
 
 # ---------------------------------------------------------------------------
