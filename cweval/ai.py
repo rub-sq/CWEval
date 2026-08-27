@@ -1,10 +1,19 @@
 import abc
+import json
 import os
-from typing import Dict, List
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 import litellm
+import requests
 
 # litellm.set_verbose = True
+
+# Silences litellm's "Provider List: ..." banner, printed on a transient
+# provider-resolution race under concurrent num_proc workers (each retried
+# call eventually succeeds regardless). Only suppresses the print - the
+# retry/error behavior itself is unaffected.
+litellm.suppress_debug_info = True
 
 
 class AIAPI(abc.ABC):
@@ -126,3 +135,172 @@ class AIAPI(abc.ABC):
         # index-aligned with `resp`; consumed by generate.py to write token sidecars
         self.usages = usages
         return resp
+
+
+class OpenRouterBatch:
+    """Direct OpenRouter Batch API client (submit an array of requests, poll,
+    get results at ~half price). litellm has NO support for this - its
+    `create_batch` only implements OpenAI's own batch endpoint - so this
+    bypasses litellm entirely for this one path; the synchronous AIAPI class
+    above is untouched.
+
+    Usage-dict shape returned by parse_results matches AIAPI._per_response_usage
+    exactly ({completion_tokens, prompt_tokens, reasoning_tokens}), so callers
+    (generate.py) write the identical meta.json sidecar regardless of which
+    path produced a response.
+
+    NOTE ON CONFIDENCE: submission (POST) and polling (GET status) are
+    implemented directly from OpenRouter's published API docs
+    (openrouter.ai/docs/batch-quickstart) and are solid. The exact shape of
+    the RESULTS payload once status=="completed" is not fully documented
+    there beyond "results are returned inline"; parse_results below is
+    written defensively (tries a couple of plausible key names, modeled on
+    OpenAI's batch output format, which OpenRouter's docs describe theirs as
+    mirroring) but has not been verified against a real completed batch.
+    If a live run's parsed results come back empty/wrong, this is the one
+    function to inspect against the actual JSON - print batch_response to see
+    its real shape.
+    """
+
+    BASE_URL = 'https://openrouter.ai/api/beta/batches'
+    POLL_INTERVAL_S = 30
+    MAX_WAIT_S = 26 * 3600  # a bit over the documented 24h completion window
+
+    def __init__(self, model: str, **ai_kwargs) -> None:
+        # AIAPI.model carries litellm's "openrouter/" routing prefix (e.g.
+        # "openrouter/anthropic/claude-haiku-4.5"); OpenRouter's own API wants
+        # its native slug without that prefix ("anthropic/claude-haiku-4.5").
+        model = model[len('openrouter/') :] if model.startswith('openrouter/') else model
+        # OpenRouter catalogs the batch-discounted rate as a DISTINCT model id
+        # (e.g. "anthropic/claude-haiku-4.5:batch", confirmed via
+        # /api/v1/models: exactly half the price of the plain id, and its
+        # supported_parameters list drops "max_completion_tokens" - only
+        # "max_tokens" is listed, which is already the field name used below).
+        # Append the suffix so this actually gets billed at that rate.
+        self.model = model if model.endswith(':batch') else f'{model}:batch'
+        self.api_key = os.environ['OPENROUTER_API_KEY']
+        self.ai_kwargs = ai_kwargs
+
+    def _headers(self) -> Dict[str, str]:
+        return {
+            'Authorization': f'Bearer {self.api_key}',
+            'Content-Type': 'application/json',
+        }
+
+    def _request_body(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
+        body: Dict[str, Any] = {'model': self.model, 'messages': messages}
+        if 'temperature' in self.ai_kwargs:
+            body['temperature'] = self.ai_kwargs['temperature']
+        # OpenRouter's own chat completions field is `max_tokens`, not
+        # litellm's `max_completion_tokens` alias - we're bypassing litellm's
+        # translation layer here, so it has to be done explicitly.
+        if 'max_completion_tokens' in self.ai_kwargs:
+            body['max_tokens'] = self.ai_kwargs['max_completion_tokens']
+        extra_body = self.ai_kwargs.get('extra_body')
+        if extra_body:
+            body.update(extra_body)  # e.g. {"reasoning": {"max_tokens": N}}
+        return body
+
+    def submit(self, entries: List[Tuple[str, List[Dict[str, str]]]]) -> str:
+        """entries: list of (custom_id, messages). Returns the batch id."""
+        payload = {
+            'endpoint': '/v1/chat/completions',
+            'model': self.model,
+            'requests': [
+                {'custom_id': cid, 'body': self._request_body(msgs)} for cid, msgs in entries
+            ],
+        }
+        resp = requests.post(self.BASE_URL, headers=self._headers(), json=payload, timeout=120)
+        resp.raise_for_status()
+        data = resp.json()
+        batch_id = data.get('id') or data.get('batch_id')
+        if not batch_id:
+            raise RuntimeError(f'Batch submit response had no id field: {data}')
+        return batch_id
+
+    def get_status(self, batch_id: str) -> Dict[str, Any]:
+        resp = requests.get(f'{self.BASE_URL}/{batch_id}', headers=self._headers(), timeout=60)
+        resp.raise_for_status()
+        return resp.json()
+
+    def poll_until_done(self, batch_id: str, on_tick=None) -> Dict[str, Any]:
+        """Blocks (polling every POLL_INTERVAL_S) until the batch reaches a
+        terminal state. Returns the final status response, which carries the
+        results once status == 'completed'. Safe to call again after a
+        process restart - polling is idempotent, no local state required."""
+        start = time.time()
+        while True:
+            data = self.get_status(batch_id)
+            status = data.get('status')
+            if on_tick:
+                on_tick(status, data)
+            if status == 'completed':
+                return data
+            if status in ('failed', 'expired', 'cancelled'):
+                raise RuntimeError(f'Batch {batch_id} ended with status={status}: {data}')
+            if time.time() - start > self.MAX_WAIT_S:
+                raise TimeoutError(
+                    f'Batch {batch_id} still "{status}" after {self.MAX_WAIT_S}s - '
+                    f'past the documented 24h window; check it manually.'
+                )
+            time.sleep(self.POLL_INTERVAL_S)
+
+    @staticmethod
+    def parse_results(batch_response: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        """custom_id -> {'content': str|None, 'usage': dict|None, 'error': str|None}.
+        See the class docstring: this is the one function to double-check
+        against a real response, key names here are a best-effort guess.
+        """
+        out: Dict[str, Dict[str, Any]] = {}
+        results = batch_response.get('results') or batch_response.get('output') or []
+        for row in results:
+            cid = row.get('custom_id')
+            if cid is None:
+                continue
+            err = row.get('error')
+            if err:
+                out[cid] = {'content': None, 'usage': None, 'error': str(err)}
+                continue
+            body = (row.get('response') or {}).get('body') or row.get('body') or {}
+            choices = body.get('choices') or []
+            content = choices[0]['message']['content'] if choices else None
+            usage = body.get('usage') or {}
+            details = usage.get('completion_tokens_details') or {}
+            out[cid] = {
+                'content': content,
+                'usage': {
+                    'completion_tokens': usage.get('completion_tokens'),
+                    'prompt_tokens': usage.get('prompt_tokens'),
+                    'reasoning_tokens': details.get('reasoning_tokens'),
+                },
+                'error': None,
+            }
+        return out
+
+
+class BatchState:
+    """Persists {batch_id, custom_id -> target} to a file next to the eval
+    output so a killed/disconnected process (real risk at up to 24h) can
+    resume polling the SAME batch on restart instead of resubmitting - that
+    would double-pay for whatever already ran. One state file per eval_path;
+    deleted once results are written."""
+
+    def __init__(self, path: str) -> None:
+        self.path = path
+
+    def exists(self) -> bool:
+        return os.path.exists(self.path)
+
+    def save(self, batch_id: str, targets: Dict[str, Dict[str, Any]]) -> None:
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        with open(self.path, 'w') as f:
+            json.dump({'batch_id': batch_id, 'targets': targets}, f)
+
+    def load(self) -> Tuple[str, Dict[str, Dict[str, Any]]]:
+        with open(self.path) as f:
+            d = json.load(f)
+        return d['batch_id'], d['targets']
+
+    def clear(self) -> None:
+        if os.path.exists(self.path):
+            os.remove(self.path)

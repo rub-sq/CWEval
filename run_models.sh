@@ -5,6 +5,19 @@
 #   bash run_models.sh                     # all models in ALL_MODELS; skips already-complete ones
 #   bash run_models.sh <name> [<name>...]  # one or more specific models
 #   N=10 bash run_models.sh <name>...      # override n (also: TEMPERATURE, MAX_TOKENS, NUM_PROC)
+#   BATCH_MODE=1 bash run_models.sh <name>...   # submit the model's whole shortfall (up to 119*N
+#                                           # requests) as ONE OpenRouter batch at ~half price,
+#                                           # instead of NUM_PROC parallel synchronous calls.
+#                                           # Same generated_N/*_raw.*/*_meta.*.json output either
+#                                           # way. Can take up to 24h to complete (polls until
+#                                           # done); safe to Ctrl-C and rerun the same command -
+#                                           # it resumes the same submitted batch, doesn't resubmit.
+#                                           # NOTE: with multiple model names in one invocation,
+#                                           # each model's batch is submitted+polled to completion
+#                                           # before the next model starts - they do NOT run
+#                                           # concurrently. For N models each near the 24h window,
+#                                           # that's sequential, not N-way parallel; say so if you
+#                                           # want that changed.
 #
 # Model names: gpt56sol  gpt56luna  sonnet5  haiku45  gemini31pro  gemini37flash
 #
@@ -34,6 +47,7 @@ NUM_PROC="${NUM_PROC:-8}"
 # not just the ones known to reason heavily - set to "" to disable entirely.
 # See openrouter.ai/docs/guides/best-practices/reasoning-tokens.
 REASONING_MAX_TOKENS="${REASONING_MAX_TOKENS:-2048}"
+BATCH_MODE="${BATCH_MODE:-0}"
 
 # ---------------------------------------------------------------------------
 # Model registry  (name -> OpenRouter slug; verified against
@@ -113,6 +127,12 @@ run_model() {
         extra_body_args=(--extra_body "{\"reasoning\": {\"max_tokens\": $REASONING_MAX_TOKENS}}")
     fi
 
+    local batch_args=()
+    if [[ "$BATCH_MODE" = "1" ]]; then
+        echo "  -> batch mode: submitting as one OpenRouter batch (can take up to 24h)"
+        batch_args=(--batch True)
+    fi
+
     # generate.py prompts "overwrite? (y/n)" if --eval_path already exists
     # (e.g. a leftover _topup dir from a prior crashed run); pipe 'y' so this
     # never blocks on stdin.
@@ -124,6 +144,7 @@ run_model() {
         --num_proc "$NUM_PROC" \
         --ppt      direct \
         "${extra_body_args[@]}" \
+        "${batch_args[@]}" \
         --eval_path "$gen_dir"; then
         echo "  -> $name FAILED" >&2
         return 1

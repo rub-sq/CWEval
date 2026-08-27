@@ -7,6 +7,22 @@ from cweval.ai import AIAPI
 class Prompt(abc.ABC):
     @classmethod
     @abc.abstractmethod
+    def build_messages(cls, lang: str, code_prompt: str) -> List[Dict[str, str]]:
+        """The chat messages for one task - the part batch mode also needs,
+        split out from req_ai so it can build request bodies without an
+        AIAPI/synchronous send. Subclasses implement this; req_ai and batch
+        submission both call it, so the two paths never diverge."""
+        raise NotImplementedError
+
+    @classmethod
+    def postprocess(cls, prompt_text: str, resp: str) -> str:
+        """Transform one raw response into the final stored text. Identity
+        by default; DirectCompletionPrompt overrides this to prepend the
+        prompt. Both req_ai (sync) and batch-result parsing call this, so
+        on-disk output is identical regardless of how the response arrived."""
+        return resp
+
+    @classmethod
     def req_ai(
         cls,
         ai: AIAPI,
@@ -15,7 +31,10 @@ class Prompt(abc.ABC):
         metadata: Dict[str, Any] = {},
         **kwargs,
     ) -> List[str]:
-        raise NotImplementedError
+        msgs = cls.build_messages(lang, code_prompt)
+        resps = ai.send_message(msgs, **kwargs)
+        prompt_text = msgs[-1]['content']
+        return [cls.postprocess(prompt_text, resp) for resp in resps]
 
 
 class DirectPrompt(Prompt):
@@ -38,15 +57,8 @@ You should output your complete implementation in a single code block.
     }
 
     @classmethod
-    def req_ai(
-        cls,
-        ai: AIAPI,
-        lang: str,
-        code_prompt: str,
-        metadata: Dict[str, Any] = {},
-        **kwargs,
-    ) -> List[str]:
-        msgs = [
+    def build_messages(cls, lang: str, code_prompt: str) -> List[Dict[str, str]]:
+        return [
             {
                 'role': 'user',
                 'content': cls.PPT.format(
@@ -54,7 +66,6 @@ You should output your complete implementation in a single code block.
                 ),
             },
         ]
-        return ai.send_message(msgs, **kwargs)
 
 
 class SecurePrompt(DirectPrompt):
@@ -79,26 +90,9 @@ class DirectCompletionPrompt(DirectPrompt):
     }
 
     @classmethod
-    def req_ai(
-        cls,
-        ai: AIAPI,
-        lang: str,
-        code_prompt: str,
-        metadata: Dict[str, Any] = {},
-        **kwargs,
-    ) -> List[str]:
-        prompt = cls.PPT.format(
-            lang=lang, lang_instr=cls.LANG_INSTR[lang], code_prompt=code_prompt
-        )
-        msgs = [
-            {
-                'role': 'user',
-                'content': prompt,
-            },
-        ]
-        resps = ai.send_message(msgs, **kwargs)
+    def postprocess(cls, prompt_text: str, resp: str) -> str:
         # prepend prompt to each response to get the complete texts
-        return [prompt + resp for resp in resps]
+        return prompt_text + resp
 
 
 def make_prompt(ppt: str) -> Prompt:
