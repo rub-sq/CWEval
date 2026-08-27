@@ -35,12 +35,15 @@ export PYTHONPATH="$(pwd)${PYTHONPATH:+:${PYTHONPATH}}"
 # ---------------------------------------------------------------------------
 # Generation parameters (override via env, e.g. N=10 bash run_models.sh ...)
 # n=20 supports pass@k for every k up to 20; the thesis reports k in {1, 10}
-# max_completion_tokens=32768 prevents reasoning models from being cut off
+# max_completion_tokens=65536 matches the open-weight arm's completion cap
+# (hpc/gen_part_0X.slurm) for a fair comparison - actual usage in the N=1
+# pilot never exceeded 16% of even the old 32768 cap, so this is effectively
+# free; REASONING_MAX_TOKENS below is what actually bounds cost
 # num_proc=8 parallelises across tasks; lower to 1 if hitting rate limits
 # ---------------------------------------------------------------------------
 N="${N:-20}"
 TEMPERATURE="${TEMPERATURE:-0.8}"
-MAX_TOKENS="${MAX_TOKENS:-32768}"
+MAX_TOKENS="${MAX_TOKENS:-65536}"
 NUM_PROC="${NUM_PROC:-8}"
 # Caps reasoning-token spend (OpenRouter `reasoning.max_tokens`, forwarded via
 # litellm's extra_body). Applies to ALL models for methodological consistency,
