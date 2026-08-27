@@ -33,7 +33,7 @@ NUM_PROC="${NUM_PROC:-8}"
 # litellm's extra_body). Applies to ALL models for methodological consistency,
 # not just the ones known to reason heavily - set to "" to disable entirely.
 # See openrouter.ai/docs/guides/best-practices/reasoning-tokens.
-REASONING_MAX_TOKENS="${REASONING_MAX_TOKENS:-8192}"
+REASONING_MAX_TOKENS="${REASONING_MAX_TOKENS:-2048}"
 
 # ---------------------------------------------------------------------------
 # Model registry  (name -> OpenRouter slug; verified against
