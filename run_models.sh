@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# CWEval generation for the six proprietary models (OpenAI, Anthropic, Google).
+# CWEval generation for proprietary models (OpenAI, Anthropic, Google) via OpenRouter.
 #
 # Usage:
-#   bash run_models.sh                     # all 6 models; skips already-complete ones
+#   bash run_models.sh                     # all models in ALL_MODELS; skips already-complete ones
 #   bash run_models.sh <name> [<name>...]  # one or more specific models
+#   N=10 bash run_models.sh <name>...      # override n (also: TEMPERATURE, MAX_TOKENS, NUM_PROC)
 #
-# Model names: gpt54  gpt54mini  sonnet46  haiku45  gemini31pro  gemini3flash
+# Model names: gpt56sol  gpt56luna  sonnet5  haiku45  gemini31pro  gemini37flash
 #
 # Prerequisites:
 #   export OPENROUTER_API_KEY="sk-or-..."
@@ -19,33 +20,34 @@ export OPENROUTER_API_KEY
 export PYTHONPATH="$(pwd)${PYTHONPATH:+:${PYTHONPATH}}"
 
 # ---------------------------------------------------------------------------
-# Generation parameters
+# Generation parameters (override via env, e.g. N=10 bash run_models.sh ...)
 # n=20 supports pass@k for every k up to 20; the thesis reports k in {1, 10}
 # max_completion_tokens=32768 prevents reasoning models from being cut off
 # num_proc=8 parallelises across tasks; lower to 1 if hitting rate limits
 # ---------------------------------------------------------------------------
-N=20
-TEMPERATURE=0.8
-MAX_TOKENS=32768
-NUM_PROC=8
+N="${N:-20}"
+TEMPERATURE="${TEMPERATURE:-0.8}"
+MAX_TOKENS="${MAX_TOKENS:-32768}"
+NUM_PROC="${NUM_PROC:-8}"
 
 # ---------------------------------------------------------------------------
-# Model registry  (name -> OpenRouter slug)
+# Model registry  (name -> OpenRouter slug; verified against
+# https://openrouter.ai/api/v1/models on 2026-08-27)
 # ---------------------------------------------------------------------------
 model_slug() {
     case "$1" in
-        gpt54)       echo "openrouter/openai/gpt-5.4" ;;
-        gpt54mini)   echo "openrouter/openai/gpt-5.4-mini" ;;
-        sonnet46)    echo "openrouter/anthropic/claude-sonnet-4.6" ;;
-        haiku45)     echo "openrouter/anthropic/claude-haiku-4.5" ;;
-        gemini31pro) echo "openrouter/google/gemini-3.1-pro-preview" ;;
-        gemini3flash) echo "openrouter/google/gemini-3-flash-preview" ;;
+        gpt56sol)      echo "openrouter/openai/gpt-5.6-sol" ;;
+        gpt56luna)     echo "openrouter/openai/gpt-5.6-luna" ;;
+        sonnet5)       echo "openrouter/anthropic/claude-sonnet-5" ;;
+        haiku45)       echo "openrouter/anthropic/claude-haiku-4.5" ;;
+        gemini31pro)   echo "openrouter/google/gemini-3.1-pro-preview" ;;
+        gemini37flash) echo "openrouter/google/gemini-3.7-flash" ;;
         *) return 1 ;;
     esac
 }
 
-# run order when no argument is given
-ALL_MODELS=(gpt54 gpt54mini sonnet46 haiku45 gemini31pro gemini3flash)
+# run order when no argument is given: the new proprietary comparison set
+ALL_MODELS=(gpt56sol gpt56luna sonnet5 haiku45 gemini31pro gemini37flash)
 
 # ---------------------------------------------------------------------------
 # Skip check: a model is considered complete when generated_{N-1} exists
