@@ -284,7 +284,7 @@ class Evaler:
         print(f'=' * 16)
         print(f'pass@{k}\t{lang or "all"}')
         print(f'func@{k}\t{functional_rate:.2f}')
-        # print(f'secure@{k}\t{secure_rate:.2f}')
+        print(f'secure@{k}\t{secure_rate:.2f}')
         print(f'func-sec@{k}\t{func_secure_rate:.2f}')
         # print(f'secure_when_functional@{k}\t{secure_when_func_rate:.2f}')
         print(f'=' * 16)

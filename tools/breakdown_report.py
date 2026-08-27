@@ -23,10 +23,18 @@ import os
 import re
 from collections import defaultdict
 
+# each family's stage-1 -> stage-3 pair, so CURRENT_GEN below covers the
+# latest stage of all 5 open-weight families (was missing DeepSeek/Qwen
+# entirely - fixed 2026-08-27, see also tools/flip_report.py's fuller
+# per-stage PAIRS for the PFR/NFR computation itself).
 PAIRS = [
     ('glm45', 'glm52'), ('kimik2think', 'kimik27'), ('minimaxm2', 'minimaxm3'),
+    ('deepseekv2', 'deepseekv4pro'), ('qwen3235b', 'qwen35397b'),
 ]
-FRONTIER_NEW = ['gpt54', 'gpt54mini', 'sonnet46', 'haiku45', 'gemini3flash']
+# renamed 2026-08-27 for the current proprietary registry: gpt54->gpt56sol,
+# gpt54mini->gpt56luna (inferred from pricing - confirm if wrong),
+# sonnet46->sonnet5, gemini3flash->gemini37flash. haiku45 unchanged.
+FRONTIER_NEW = ['gpt56sol', 'gpt56luna', 'sonnet5', 'haiku45', 'gemini37flash']
 MODELS = FRONTIER_NEW + [m for pair in PAIRS for m in pair]
 CURRENT_GEN = FRONTIER_NEW + [new for _, new in PAIRS]
 LANG_ORDER = ['all', 'py', 'c', 'cpp', 'go', 'js', 'lang-c']
@@ -71,7 +79,7 @@ def insecure_rate(res, tasks):
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     res_by_model = {m: load(m) for m in MODELS}
-    langs, cwes = groups(res_by_model['gpt54'])
+    langs, cwes = groups(res_by_model['gpt56sol'])
 
     lang_rows, cwe_rows = [], []
     for m in MODELS:

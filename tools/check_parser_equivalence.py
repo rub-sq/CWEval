@@ -42,13 +42,19 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BENCH = os.path.join(REPO, 'benchmark')
 EVALS = os.path.join(REPO, 'evals')
 
-# the five proprietary models of the study, none of which emits reasoning
+# the five proprietary models of the study, none of which emits reasoning.
+# renamed 2026-08-27: gpt54->gpt56sol, gpt54mini->gpt56luna (inferred from
+# pricing - confirm if wrong), sonnet46->sonnet5, gemini3flash->gemini37flash.
+# haiku45 unchanged. Note gpt56sol/gpt56luna DO now use reasoning
+# (REASONING_MAX_TOKENS is applied uniformly) - if that's true of the models
+# this list originally named too, the "none of which emits reasoning" premise
+# needs rechecking before trusting this script's result on them.
 FRONTIER = [
-    'gpt54',
-    'gpt54mini',
-    'sonnet46',
+    'gpt56sol',
+    'gpt56luna',
+    'sonnet5',
     'haiku45',
-    'gemini3flash',
+    'gemini37flash',
 ]
 
 

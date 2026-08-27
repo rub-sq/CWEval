@@ -21,12 +21,18 @@ KS = [1, 10]
 # was sampled 20 times and cannot support it.
 KS_OPENWEIGHT = KS + [50]
 OPENWEIGHT = {'glm45', 'glm52', 'kimik27', 'kimik2think', 'minimaxm2', 'minimaxm3'}
+# renamed 2026-08-27 for the current proprietary registry: gpt54->gpt56sol,
+# gpt54mini->gpt56luna (sol/luna inferred from pricing tier - luna is the
+# cheap one, matching "mini" - confirm if wrong), sonnet46->sonnet5,
+# gemini3flash->gemini37flash. haiku45/gemini31pro unchanged. gemini31pro
+# intentionally excluded here, matching the original list - see audit_report.py's
+# TOKENS_ONLY for why (partial/aborted run).
 MODELS_FULL = [
-    'gpt54',
-    'gpt54mini',
-    'sonnet46',
+    'gpt56sol',
+    'gpt56luna',
+    'sonnet5',
     'haiku45',
-    'gemini3flash',
+    'gemini37flash',
     'glm45',
     'glm52',
     'kimik27',

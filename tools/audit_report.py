@@ -39,9 +39,12 @@ for _mod in ['fire', 'numpy', 'natsort', 'psutil']:
 
 from cweval.commons import get_code_blocks, strip_reasoning
 
+# renamed 2026-08-27 for the current proprietary registry: gpt54->gpt56sol,
+# gpt54mini->gpt56luna (inferred from pricing - confirm if wrong),
+# sonnet46->sonnet5, gemini3flash->gemini37flash. haiku45 unchanged.
 MODELS = [
     'glm45', 'glm52', 'kimik27', 'kimik2think', 'minimaxm2', 'minimaxm3',
-    'gpt54', 'gpt54mini', 'sonnet46', 'haiku45', 'gemini3flash',
+    'gpt56sol', 'gpt56luna', 'sonnet5', 'haiku45', 'gemini37flash',
 ]
 # partial run, excluded from every metric. Only its token figures are
 # collected, since they are the reason the run was aborted.

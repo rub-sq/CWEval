@@ -59,9 +59,15 @@ export LIBRARY_PATH="$CONDA_PREFIX/lib"
 export LD_LIBRARY_PATH="$CONDA_PREFIX/lib"
 export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin
 
-# the image ships an amd64 go toolchain; build native arm64 binaries so that
-# cgo tasks compile and run on Apple Silicon
-export GOARCH=arm64 CGO_ENABLED=1
+# the image ships an amd64 go toolchain; on an Apple Silicon host, Docker
+# emulates amd64 and cgo tasks need to target arm64 instead to compile/run
+# natively. On a native amd64 host (e.g. tower-pc) the toolchain's own
+# architecture already matches - forcing arm64 unconditionally broke that case.
+HOST_ARCH=$(uname -m)
+if [ "$HOST_ARCH" = "arm64" ] || [ "$HOST_ARCH" = "aarch64" ]; then
+    export GOARCH=arm64
+fi
+export CGO_ENABLED=1
 
 cd "$REPO"
 export PYTHONPATH="$REPO"

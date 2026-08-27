@@ -147,9 +147,12 @@ def table_report(input_path: str = '', return_df: bool = False) -> pd.DataFrame 
     # Initialize storage for table data
     table_data = {}
 
-    # Regular expressions for parsing
+    # Regular expressions for parsing. evaluate.py's report_pass_at_k prints
+    # func/secure/func-sec (renamed from functional/secure/functional_secure
+    # at some point - secure@k had also gone missing entirely, since its
+    # print line was commented out; both fixed 2026-08-27).
     section_regex = r"pass@(\d+)\s+([\w/]+)"
-    metric_regex = r"(functional|secure|functional_secure)@(\d+)\s+([\d.]+)"
+    metric_regex = r"(func-sec|func|secure)@(\d+)\s+([\d.]+)"
 
     # Parse the log data
     sections = log_data.strip().split("================\n")
@@ -176,15 +179,15 @@ def table_report(input_path: str = '', return_df: bool = False) -> pd.DataFrame 
         filter(
             lambda x: x in df.T,
             [
-                'functional@1',
-                'functional@10',
-                'functional@50',
+                'func@1',
+                'func@10',
+                'func@50',
                 'secure@1',
                 'secure@10',
                 'secure@50',
-                'functional_secure@1',
-                'functional_secure@10',
-                'functional_secure@50',
+                'func-sec@1',
+                'func-sec@10',
+                'func-sec@50',
             ],
         )
     ]
@@ -257,47 +260,31 @@ def merge_report():
     # from IPython import embed; embed()
     for model, df in model_all_df.items():
         if 'g' not in model_dfs[model]:
-            df.insert(0, 'functional@1*', 0)
+            df.insert(0, 'func@1*', 0)
             df.insert(1, 'secure@1*', 0)
-            df.insert(2, 'functional_secure@1*', 0)
+            df.insert(2, 'func-sec@1*', 0)
         else:
             gdf = model_dfs[model]['g'].T.loc[['all']].rename(index={'all': model})
-            df.insert(0, 'functional@1*', gdf['functional@1'][model])
+            df.insert(0, 'func@1*', gdf['func@1'][model])
             df.insert(1, 'secure@1*', gdf['secure@1'][model])
-            df.insert(2, 'functional_secure@1*', gdf['functional_secure@1'][model])
+            df.insert(2, 'func-sec@1*', gdf['func-sec@1'][model])
 
     all_merged_df = pd.concat(model_all_df.values())
 
-    # all_merged_df = all_merged_df[
-    #     [
-    #         'functional@1*',
-    #         'secure@1*',
-    #         'functional_secure@1*',
-    #         'functional@1',
-    #         'secure@1',
-    #         'functional_secure@1',
-    #         'functional@10',
-    #         'secure@10',
-    #         'functional_secure@10',
-    #         'functional@50',
-    #         'secure@50',
-    #         'functional_secure@50',
-    #     ]
-    # ]
     all_merged_df = all_merged_df[
         [
-            'functional@1*',
-            'functional@1',
-            'functional@10',
-            'functional@50',
+            'func@1*',
+            'func@1',
+            'func@10',
+            'func@50',
             'secure@1*',
             'secure@1',
             'secure@10',
             'secure@50',
-            'functional_secure@1*',
-            'functional_secure@1',
-            'functional_secure@10',
-            'functional_secure@50',
+            'func-sec@1*',
+            'func-sec@1',
+            'func-sec@10',
+            'func-sec@50',
         ]
     ]
 

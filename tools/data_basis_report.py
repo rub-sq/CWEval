@@ -39,13 +39,16 @@ for _mod in ['fire', 'numpy', 'natsort', 'psutil']:
 
 from cweval.commons import get_code_blocks, strip_reasoning, select_code_block
 
+# renamed 2026-08-27 for the current proprietary registry: gpt54->gpt56sol,
+# gpt54mini->gpt56luna (inferred from pricing - confirm if wrong),
+# sonnet46->sonnet5, gemini3flash->gemini37flash. haiku45 unchanged.
 MODELS = [
     'glm45', 'glm52', 'kimik27', 'kimik2think', 'minimaxm2', 'minimaxm3',
-    'gpt54', 'gpt54mini', 'sonnet46', 'haiku45', 'gemini3flash',
+    'gpt56sol', 'gpt56luna', 'sonnet5', 'haiku45', 'gemini37flash',
 ]
 OPENWEIGHT = {'glm45', 'glm52', 'kimik27', 'kimik2think', 'minimaxm2',
               'minimaxm3'}
-CURRENT_GEN = ['gpt54', 'gpt54mini', 'sonnet46', 'haiku45', 'gemini3flash',
+CURRENT_GEN = ['gpt56sol', 'gpt56luna', 'sonnet5', 'haiku45', 'gemini37flash',
                'glm52', 'kimik27', 'minimaxm3']
 RUN_B = 'evals/_run_B_2026-08-06'
 OUT_DIR = 'evals/data_basis'
@@ -243,7 +246,7 @@ def thresholds():
             note('SecRatio@k', (sa / fa - sb / fb) * 100, model, f'k={k}')
 
     tasks = sorted({k.split('generated_X/')[-1]
-                    for k in load_run('gpt54')})
+                    for k in load_run('gpt56sol')})
     langs, cwes = defaultdict(set), defaultdict(set)
     for t in tasks:
         parts = t.split('/')
