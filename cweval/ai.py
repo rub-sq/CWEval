@@ -211,7 +211,13 @@ class OpenRouterBatch:
             ],
         }
         resp = requests.post(self.BASE_URL, headers=self._headers(), json=payload, timeout=120)
-        resp.raise_for_status()
+        if not resp.ok:
+            # raise_for_status() alone drops OpenRouter's actual error body (e.g.
+            # the specific reason behind a 402) - surface it instead of just the
+            # bare status code.
+            raise RuntimeError(
+                f'Batch submit failed: {resp.status_code} {resp.reason} - {resp.text}'
+            )
         data = resp.json()
         batch_id = data.get('id') or data.get('batch_id')
         if not batch_id:
