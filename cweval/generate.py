@@ -64,12 +64,16 @@ class Gener:
         # provider fine synchronously; this bypasses litellm entirely and
         # only knows OpenRouter's batch endpoint).
         batch: bool = False,
+        # skips the "already exists, continue?" prompt below (used by
+        # run_models.sh instead of piping 'y' into stdin)
+        assume_yes: bool = False,
         **kwargs,
     ):
         self.model = model
         self.ppt = ppt
         self.num_proc = num_proc
         self.batch = batch
+        self.assume_yes = assume_yes
         self.langs = langs
         self.exclude_path = exclude_path
         self.include_path = include_path
@@ -86,14 +90,24 @@ class Gener:
                 'evals', f'eval_{datetime.datetime.now().strftime("%y%m%d_%H%M%S")}'
             )
         else:
-            # check if eval_path exists
+            # check if eval_path exists (nothing is ever deleted here either
+            # way - answering 'y', or --assume_yes, just means "keep going
+            # and fill in whatever samples are missing")
             if os.path.exists(eval_path):
-                flag = (
-                    input(f'{eval_path} already exists, overwrite? (y/n): ')
+                if self.assume_yes:
+                    print(
+                        f'{eval_path} already exists, continuing '
+                        '(existing samples kept, only gaps filled).'
+                    )
+                elif (
+                    input(
+                        f'{eval_path} already exists, continue and fill in '
+                        'missing samples? (y/n): '
+                    )
                     .strip()
                     .lower()
-                )
-                if flag != 'y':
+                    != 'y'
+                ):
                     print(f'Exiting...')
                     exit(0)
 

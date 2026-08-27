@@ -223,14 +223,31 @@ class OpenRouterBatch:
         resp.raise_for_status()
         return resp.json()
 
+    # Observed live (2026-08-27): a GET immediately after a successful
+    # submit 404'd - the batch id isn't queryable the instant it's created.
+    # Tolerate 404s as "not indexed yet" for a bounded grace window rather
+    # than failing outright; past that window a 404 is treated as real.
+    NOT_FOUND_GRACE_S = 300
+    INITIAL_DELAY_S = 10  # before the first status check, not just between retries
+
     def poll_until_done(self, batch_id: str, on_tick=None) -> Dict[str, Any]:
         """Blocks (polling every POLL_INTERVAL_S) until the batch reaches a
         terminal state. Returns the final status response, which carries the
         results once status == 'completed'. Safe to call again after a
         process restart - polling is idempotent, no local state required."""
         start = time.time()
+        time.sleep(self.INITIAL_DELAY_S)  # give the batch a moment to become queryable at all
         while True:
-            data = self.get_status(batch_id)
+            try:
+                data = self.get_status(batch_id)
+            except requests.exceptions.HTTPError as e:
+                not_found = e.response is not None and e.response.status_code == 404
+                if not_found and time.time() - start < self.NOT_FOUND_GRACE_S:
+                    if on_tick:
+                        on_tick('not_found_yet', {})
+                    time.sleep(self.POLL_INTERVAL_S)
+                    continue
+                raise
             status = data.get('status')
             if on_tick:
                 on_tick(status, data)

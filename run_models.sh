@@ -136,16 +136,18 @@ run_model() {
         batch_args=(--batch True)
     fi
 
-    # generate.py prompts "overwrite? (y/n)" if --eval_path already exists
-    # (e.g. a leftover _topup dir from a prior crashed run); pipe 'y' so this
-    # never blocks on stdin.
-    if ! echo y | python cweval/generate.py gen \
+    # --assume_yes skips generate.py's "already exists, continue?" prompt
+    # (e.g. a leftover _topup dir from a prior crashed run) instead of
+    # blindly piping 'y' into stdin - nothing is ever deleted either way,
+    # only missing samples get filled in.
+    if ! python cweval/generate.py gen \
         --model    "$model" \
         --n        "$need_n" \
         --temperature "$TEMPERATURE" \
         --max_completion_tokens "$MAX_TOKENS" \
         --num_proc "$NUM_PROC" \
         --ppt      direct \
+        --assume_yes True \
         "${extra_body_args[@]}" \
         "${batch_args[@]}" \
         --eval_path "$gen_dir"; then
@@ -161,6 +163,26 @@ run_model() {
             [[ -d "$src" ]] && mv "$src" "$dst"
         done
         rmdir "$gen_dir" 2>/dev/null || true
+
+        # generate.py numbers sample_index locally to each run (always
+        # starting at 0); rewrite it to match the final generated_N index
+        # now that the mv above has settled where each sample actually lives.
+        python - "$eval_dir" "$existing_n" "$need_n" <<'PYEOF'
+import glob, json, os, sys
+
+eval_dir, existing_n, need_n = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+for offset in range(need_n):
+    final_index = existing_n + offset
+    for meta_path in glob.glob(
+        os.path.join(eval_dir, f'generated_{final_index}', '**', '*_meta.*.json'),
+        recursive=True,
+    ):
+        with open(meta_path) as f:
+            meta = json.load(f)
+        meta['sample_index'] = final_index
+        with open(meta_path, 'w') as f:
+            json.dump(meta, f)
+PYEOF
     fi
 
     echo "  -> $name done"

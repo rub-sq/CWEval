@@ -167,3 +167,6 @@ node_modules/
 
 package-lock.json
 package.json
+
+# Generation output (per-machine, synced via rsync, not git)
+evals/
