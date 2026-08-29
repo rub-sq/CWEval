@@ -263,7 +263,22 @@ class Gener:
         def on_tick(status: str, _data: Dict[str, Any]) -> None:
             print(f'  batch {batch_id}: {status}', flush=True)
 
-        final = batcher.poll_until_done(batch_id, on_tick=on_tick)
+        try:
+            final = batcher.poll_until_done(batch_id, on_tick=on_tick)
+        except RuntimeError:
+            # poll_until_done raises RuntimeError specifically for a terminal
+            # failed/expired/cancelled status - that batch_id is dead and
+            # will never complete. Clear the tracked state so the next
+            # invocation submits a fresh batch instead of resuming (and
+            # immediately re-failing on) this same dead one - without this,
+            # every retry just re-polls the same batch and gets the same
+            # terminal error forever, never actually retrying. A plain
+            # TimeoutError (still in_progress past MAX_WAIT_S) is not caught
+            # here: that batch may still complete on its own, so state stays
+            # tracked and a later invocation resumes polling it rather than
+            # submitting a wasteful duplicate.
+            state.clear()
+            raise
         results = OpenRouterBatch.parse_results(final)
 
         written = failed = 0

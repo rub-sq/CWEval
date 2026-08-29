@@ -7,12 +7,16 @@ Markdown code block and recognised a fence only at the very beginning of a
 line; the new one strips reasoning sections, tolerates indented fences and
 selects the last block defining the required entrypoint.
 
-For models that emit no reasoning and a single code block both rules must
-agree. This script checks that claim on the five proprietary models, which is the
-group the fix was NOT written for, and it is the measurement Chapter 7
-reports under internal validity: if the fix silently changed their extracted
-code as well, the before/after comparison of the re-evaluation would be
-confounded.
+When there is no reasoning section to strip and a single code block, both
+rules must agree. This script checks whether the rewrite changed extracted
+code on the five proprietary models - the group the fix was not written
+for - which is the measurement Chapter 7 reports under internal validity:
+if the fix silently changed their extracted code too, the before/after
+comparison of the re-evaluation would be confounded. (Several of these
+models do emit reasoning sections themselves; the comparison still holds
+regardless, since it checks the two parsers' output against each other on
+whatever the actual responses contain, not against an assumption about
+whether reasoning is present.)
 
 Method: the original parser is reproduced below verbatim from the state
 before dc25e5e. Both parsers are applied to the stored raw responses, with
@@ -42,13 +46,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BENCH = os.path.join(REPO, 'benchmark')
 EVALS = os.path.join(REPO, 'evals')
 
-# the five proprietary models of this study. CAVEAT: gpt56sol, gpt56luna and
-# gemini31pro are reasoning-capable under this study's uniform
-# REASONING_MAX_TOKENS setting and do emit reasoning on most or all of their
-# responses (see evals/audit/token_stats.csv) - this conflicts with the
-# "none of which emits reasoning" premise stated in the module docstring
-# above, and should be rechecked before trusting this script's result for
-# those three.
+# the five proprietary models of this study.
 FRONTIER = [
     'gpt56sol',
     'gpt56luna',
