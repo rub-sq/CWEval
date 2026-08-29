@@ -38,7 +38,7 @@ STAGE_PAIRS = [
     ('minimaxm2', 'minimaxm25'), ('minimaxm25', 'minimaxm3'), ('minimaxm2', 'minimaxm3'),
     ('kimik2think', 'kimik25'), ('kimik25', 'kimik27'), ('kimik2think', 'kimik27'),
     ('glm45', 'glm47'), ('glm47', 'glm52'), ('glm45', 'glm52'),
-    ('deepseekv2', 'deepseekv32'), ('deepseekv32', 'deepseekv4pro'), ('deepseekv2', 'deepseekv4pro'),
+    ('deepseekv3', 'deepseekv32'), ('deepseekv32', 'deepseekv4pro'), ('deepseekv3', 'deepseekv4pro'),
     ('qwen3235b', 'qwen3coder480b'), ('qwen3coder480b', 'qwen35397b'), ('qwen3235b', 'qwen35397b'),
 ]
 # Small-vs-large size-matched sibling pairs at the same stage, per README.md's
@@ -47,7 +47,7 @@ SIBLING_PAIRS = [
     ('qwen330b', 'qwen3235b'),
     ('qwen3coder30b', 'qwen3coder480b'),
     ('qwen3527b', 'qwen35397b'),
-    ('deepseekv2lite', 'deepseekv2'),
+    ('deepseekv4flash', 'deepseekv4pro'),
     ('glm47flash', 'glm47'),
 ]
 _REAL_PAIRS = STAGE_PAIRS + SIBLING_PAIRS
@@ -157,12 +157,23 @@ def write_csv(path: str, rows: list) -> None:
     print(f'Wrote {path} ({len(rows)} rows)')
 
 
+def _has_data(model: str) -> bool:
+    return os.path.exists(os.path.join('evals', f'eval_{model}', 'res_all.json'))
+
+
 def main() -> None:
     all_rows, conc_rows = [], []
+    skipped = []
     for old, new in PAIRS:
+        if not (_has_data(old) and _has_data(new)):
+            skipped.append(f'{old}->{new}')
+            continue
         rows, conc = pair_rows(old, new)
         all_rows += rows
         conc_rows.append(conc)
+    if skipped:
+        print(f'  skipping {len(skipped)} pair(s), no res_all.json yet for '
+              f'one side: {", ".join(skipped)}')
     write_csv(os.path.join('evals', 'flip_report.csv'), all_rows)
     write_csv(os.path.join('evals', 'flip_concentration.csv'), conc_rows)
 

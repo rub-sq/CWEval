@@ -28,7 +28,7 @@ from collections import defaultdict
 # the fuller per-stage PAIRS used in the PFR/NFR computation itself.
 PAIRS = [
     ('glm45', 'glm52'), ('kimik2think', 'kimik27'), ('minimaxm2', 'minimaxm3'),
-    ('deepseekv2', 'deepseekv4pro'), ('qwen3235b', 'qwen35397b'),
+    ('deepseekv3', 'deepseekv4pro'), ('qwen3235b', 'qwen35397b'),
 ]
 FRONTIER_NEW = ['gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash']
 # all 20 open-weight models of README.md - full language/CWE breakdown
@@ -37,9 +37,9 @@ FRONTIER_NEW = ['gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flas
 # dead_variants() below.
 OPENWEIGHT_ALL = [
     'minimaxm2', 'minimaxm25', 'minimaxm3', 'kimik2think', 'kimik25', 'kimik27',
-    'glm45', 'glm47', 'glm52', 'deepseekv2', 'deepseekv32', 'deepseekv4pro',
+    'glm45', 'glm47', 'glm52', 'deepseekv3', 'deepseekv32', 'deepseekv4pro',
     'qwen3235b', 'qwen3coder480b', 'qwen35397b',
-    'qwen330b', 'qwen3coder30b', 'qwen3527b', 'deepseekv2lite', 'glm47flash',
+    'qwen330b', 'qwen3coder30b', 'qwen3527b', 'deepseekv4flash', 'glm47flash',
 ]
 MODELS = FRONTIER_NEW + OPENWEIGHT_ALL
 CURRENT_GEN = FRONTIER_NEW + [new for _, new in PAIRS]

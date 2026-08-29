@@ -44,10 +44,10 @@ MODELS = [
     'minimaxm2', 'minimaxm25', 'minimaxm3',
     'kimik2think', 'kimik25', 'kimik27',
     'glm45', 'glm47', 'glm52',
-    'deepseekv2', 'deepseekv32', 'deepseekv4pro',
+    'deepseekv3', 'deepseekv32', 'deepseekv4pro',
     'qwen3235b', 'qwen3coder480b', 'qwen35397b',
     'qwen330b', 'qwen3coder30b', 'qwen3527b',
-    'deepseekv2lite', 'glm47flash',
+    'deepseekv4flash', 'glm47flash',
     'gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash',
 ]
 # Models to include in token_stats() but not format_compliance() (e.g. a
@@ -119,6 +119,11 @@ def format_compliance():
             if '__pycache__' not in p
         ]
         n = len(raws)
+        if not n:
+            # generation hasn't started for this model at all yet - skip
+            # rather than divide by zero below.
+            print(f'  format_compliance: skip {model}, no raw samples yet')
+            continue
         think = multi = noblock = unclosed = 0
         chars_trunc, chars_other = [], []
         for p in raws:

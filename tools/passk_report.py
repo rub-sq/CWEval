@@ -26,10 +26,10 @@ OPENWEIGHT = {
     'minimaxm2', 'minimaxm25', 'minimaxm3',
     'kimik2think', 'kimik25', 'kimik27',
     'glm45', 'glm47', 'glm52',
-    'deepseekv2', 'deepseekv32', 'deepseekv4pro',
+    'deepseekv3', 'deepseekv32', 'deepseekv4pro',
     'qwen3235b', 'qwen3coder480b', 'qwen35397b',
     'qwen330b', 'qwen3coder30b', 'qwen3527b',
-    'deepseekv2lite', 'glm47flash',
+    'deepseekv4flash', 'glm47flash',
 }
 # the five proprietary models plus all 20 open-weight models of README.md.
 MODELS_FULL = [
@@ -73,9 +73,9 @@ def rows_for(model: str, res: dict, scopes) -> list:
             # fewer graded samples than k would be scored as solved if left
             # in. Exclude just the under-covered task(s) from this k's
             # average instead of dropping the whole model/scope over one of
-            # them - e.g. deepseekv2lite has exactly one such task at k=50,
-            # out of 119; the other 118 have plenty of headroom and
-            # computing k=50 from them is still meaningful. num_tasks
+            # them - a model can have just one or two such tasks out of 119,
+            # with the rest carrying plenty of headroom, so computing k=50
+            # from the rest is still meaningful. num_tasks
             # records how many tasks actually went into the average, so a
             # narrower denominator than the scope's full task count is
             # visible in the output, not silent.

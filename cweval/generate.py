@@ -217,6 +217,18 @@ class Gener:
             if not resp:
                 continue
             out_path = case['out_path_template'].format(index=i)
+            if os.path.exists(out_path):
+                # The check above only established that *some* index in
+                # range(num_samples) is missing for this task, not which -
+                # every call here requests a full fresh batch of num_samples
+                # completions, so most indices usually already exist. Without
+                # this check they'd be silently overwritten with a brand new
+                # (different) sample: fine for a truly fresh run where
+                # nothing exists yet, actively destructive when pointing
+                # generate.py at an eval dir that already has real data with
+                # just a few gaps in it (e.g. to backfill specific missing
+                # samples) - this is exactly that safeguard.
+                continue
             os.makedirs(os.path.dirname(out_path), exist_ok=True)
             with open(out_path, 'w') as f:
                 f.write(resp)

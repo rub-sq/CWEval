@@ -90,10 +90,10 @@ else
         eval_glm47
         eval_glm47flash
         eval_glm52
-        eval_deepseekv2
-        eval_deepseekv2lite
+        eval_deepseekv3
         eval_deepseekv32
         eval_deepseekv4pro
+        eval_deepseekv4flash
         eval_qwen3235b
         eval_qwen330b
         eval_qwen3coder480b
