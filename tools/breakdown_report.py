@@ -34,8 +34,22 @@ PAIRS = [
 # renamed 2026-08-27 for the current proprietary registry: gpt54->gpt56sol,
 # gpt54mini->gpt56luna (inferred from pricing - confirm if wrong),
 # sonnet46->sonnet5, gemini3flash->gemini37flash. haiku45 unchanged.
-FRONTIER_NEW = ['gpt56sol', 'gpt56luna', 'sonnet5', 'haiku45', 'gemini37flash']
-MODELS = FRONTIER_NEW + [m for pair in PAIRS for m in pair]
+# sonnet5 -> gemini31pro 2026-08-28: original paper's authors lost the
+# Sonnet baseline data, so Sonnet is the model to cut for comparability.
+FRONTIER_NEW = ['gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash']
+# all 20 open-weight models per README.md - MODELS (below) expanded to this
+# 2026-08-27 for full language/CWE breakdown coverage, now that all 20 are
+# evaluated; previously only the 10 models appearing in PAIRS were covered,
+# silently dropping the 5 stage-2 models and 5 small siblings. CURRENT_GEN
+# stays narrowly scoped to PAIRS' latest-stage entries - that's a different,
+# deliberately narrower concept (dead_variants() below).
+OPENWEIGHT_ALL = [
+    'minimaxm2', 'minimaxm25', 'minimaxm3', 'kimik2think', 'kimik25', 'kimik27',
+    'glm45', 'glm47', 'glm52', 'deepseekv2', 'deepseekv32', 'deepseekv4pro',
+    'qwen3235b', 'qwen3coder480b', 'qwen35397b',
+    'qwen330b', 'qwen3coder30b', 'qwen3527b', 'deepseekv2lite', 'glm47flash',
+]
+MODELS = FRONTIER_NEW + OPENWEIGHT_ALL
 CURRENT_GEN = FRONTIER_NEW + [new for _, new in PAIRS]
 LANG_ORDER = ['all', 'py', 'c', 'cpp', 'go', 'js', 'lang-c']
 MIN_TASKS = 3
@@ -78,11 +92,21 @@ def insecure_rate(res, tasks):
 
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
-    res_by_model = {m: load(m) for m in MODELS}
-    langs, cwes = groups(res_by_model['gpt56sol'])
+    # skip models whose evaluation hasn't run yet rather than crash outright -
+    # generation/evaluation across the two arms of this study finishes at
+    # different times, so a partial MODELS list is the normal case, not an
+    # error (2026-08-28).
+    res_by_model = {}
+    for m in MODELS:
+        if not os.path.exists(f'evals/eval_{m}/res_all.json'):
+            print(f'  skip {m}: no res_all.json yet')
+            continue
+        res_by_model[m] = load(m)
+    available = list(res_by_model)
+    langs, cwes = groups(res_by_model[available[0]])
 
     lang_rows, cwe_rows = [], []
-    for m in MODELS:
+    for m in available:
         res = res_by_model[m]
         for scope in LANG_ORDER:
             lang_rows.append({
@@ -108,7 +132,8 @@ def dead_variants(res_by_model):
     the sample as not plausible and as insecure at once.
     """
     agg = defaultdict(lambda: [0, 0])
-    for model in CURRENT_GEN:
+    current = [m for m in CURRENT_GEN if m in res_by_model]
+    for model in current:
         for key, v in res_by_model[model].items():
             task = key.split('generated_X/')[-1]
             agg[task][0] += sum(v['functional'])
@@ -122,7 +147,7 @@ def dead_variants(res_by_model):
         rows.append({
             'task': task,
             'cwe': cwe,
-            'models': len(CURRENT_GEN),
+            'models': len(current),
             'graded_samples': graded,
             'plausible_samples': plausible,
         })

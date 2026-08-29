@@ -49,10 +49,14 @@ EVALS = os.path.join(REPO, 'evals')
 # (REASONING_MAX_TOKENS is applied uniformly) - if that's true of the models
 # this list originally named too, the "none of which emits reasoning" premise
 # needs rechecking before trusting this script's result on them.
+# sonnet5 -> gemini31pro 2026-08-28: original paper's authors lost the Sonnet
+# baseline data, so Sonnet is the model to cut for comparability. gemini31pro
+# is also reasoning-capable under this study's uniform REASONING_MAX_TOKENS -
+# same "none of which emits reasoning" caveat applies to it too.
 FRONTIER = [
     'gpt56sol',
     'gpt56luna',
-    'sonnet5',
+    'gemini31pro',
     'haiku45',
     'gemini37flash',
 ]

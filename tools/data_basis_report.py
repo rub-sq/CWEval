@@ -42,13 +42,25 @@ from cweval.commons import get_code_blocks, strip_reasoning, select_code_block
 # renamed 2026-08-27 for the current proprietary registry: gpt54->gpt56sol,
 # gpt54mini->gpt56luna (inferred from pricing - confirm if wrong),
 # sonnet46->sonnet5, gemini3flash->gemini37flash. haiku45 unchanged.
-MODELS = [
-    'glm45', 'glm52', 'kimik27', 'kimik2think', 'minimaxm2', 'minimaxm3',
-    'gpt56sol', 'gpt56luna', 'sonnet5', 'haiku45', 'gemini37flash',
+# OPENWEIGHT/MODELS expanded the same day from the original 6-model subset to
+# all 20 per README.md, matching the same fix in passk_report.py and
+# breakdown_report.py - all 20 are now fully evaluated, no reason to leave
+# the other 14 out of the coverage/flakiness/threshold reports.
+OPENWEIGHT = {
+    'minimaxm2', 'minimaxm25', 'minimaxm3',
+    'kimik2think', 'kimik25', 'kimik27',
+    'glm45', 'glm47', 'glm52',
+    'deepseekv2', 'deepseekv32', 'deepseekv4pro',
+    'qwen3235b', 'qwen3coder480b', 'qwen35397b',
+    'qwen330b', 'qwen3coder30b', 'qwen3527b',
+    'deepseekv2lite', 'glm47flash',
+}
+# sonnet5 -> gemini31pro 2026-08-28: original paper's authors lost the
+# Sonnet baseline data, so Sonnet is the model to cut for comparability.
+MODELS = sorted(OPENWEIGHT) + [
+    'gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash',
 ]
-OPENWEIGHT = {'glm45', 'glm52', 'kimik27', 'kimik2think', 'minimaxm2',
-              'minimaxm3'}
-CURRENT_GEN = ['gpt56sol', 'gpt56luna', 'sonnet5', 'haiku45', 'gemini37flash',
+CURRENT_GEN = ['gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash',
                'glm52', 'kimik27', 'minimaxm3']
 RUN_B = 'evals/_run_B_2026-08-06'
 OUT_DIR = 'evals/data_basis'
@@ -124,6 +136,19 @@ def coverage():
             glob(f'evals/eval_{model}/generated_*'),
             key=lambda p: int(p.rsplit('_', 1)[1]),
         )
+        # needs each generation's own res.json (per-task verdicts, written by
+        # evaluation - not the same file as the aggregate res_all.json).
+        # Coverage can be partial within one model (e.g. haiku45 has res.json
+        # for its first 20 generations from an earlier pass, but not for
+        # samples added since) - filter to just the generations that have it,
+        # rather than an all-or-nothing check on the model (2026-08-28).
+        gen_paths = [gp for gp in gen_paths if os.path.exists(os.path.join(gp, 'res.json'))]
+        # also needs the aggregate res_all.json below (load_run) - haiku45's
+        # was deliberately set aside as stale (evaluated at n=20, since grown
+        # past that), so exclude it here too rather than report on it half-fresh.
+        if not gen_paths or not os.path.exists(f'evals/eval_{model}/res_all.json'):
+            print(f'  skip {model}: no per-generation res.json, or stale/missing res_all.json')
+            continue
         n_raw = n_graded = 0
         by_lang, by_cat = Counter(), Counter()
         for gp in gen_paths:
@@ -245,8 +270,11 @@ def thresholds():
             note('Gap@k', (fa - sa) - (fb - sb), model, f'k={k}')
             note('SecRatio@k', (sa / fa - sb / fb) * 100, model, f'k={k}')
 
+    # any model's task-key set works here - just enumerating the benchmark's
+    # own tasks, not reading anything model-specific. glm45 is guaranteed to
+    # have res_all.json (all 20 open-weight models do); gpt56sol may not yet.
     tasks = sorted({k.split('generated_X/')[-1]
-                    for k in load_run('gpt56sol')})
+                    for k in load_run('glm45')})
     langs, cwes = defaultdict(set), defaultdict(set)
     for t in tasks:
         parts = t.split('/')

@@ -119,6 +119,37 @@ def run_tests(
         )
         # print(file_result.brief_str(), flush=True)
 
+    # 2026-08-29: pytest_collection_modifyitems above only fires for test
+    # files pytest actually collects, i.e. ones whose generated code under
+    # test imports cleanly. A file that fails to collect - empty model
+    # response, no extractable code block, invalid/truncated syntax, missing
+    # entrypoint - raises at import time, never reaches that hook, and so
+    # never gets a TestFileResult: it silently disappears from res.json (and
+    # from res_all.json downstream) instead of counting as the functional
+    # and secure failure it actually is. --continue-on-collection-errors
+    # above only keeps pytest going for *other* files; it does not
+    # synthesize a result for the one that didn't collect. _copy_test_files
+    # (called before this function, in Evaler.run_tests) already wrote every
+    # expected *_test.py under test_path regardless of whether its code
+    # collects, so walk test_path for that full expected set and backfill an
+    # explicit failing result for anything pytest didn't collect.
+    collected_files = {result.file for result in result_collector.file_results.values()}
+    for root, _dirs, files in os.walk(test_path):
+        if '__pycache__' in root:
+            continue
+        for fname in files:
+            if not fname.endswith('_test.py'):
+                continue
+            rel = os.path.relpath(os.path.join(root, fname), CWD)
+            if rel in collected_files:
+                continue
+            print(f'[run_tests] {rel} was never collected by pytest (import or '
+                  f'collection failure) - recording functional=False, '
+                  f'secure=False instead of dropping it', flush=True)
+            result_collector.file_results[rel] = TestFileResult(
+                file=rel, functional=False, secure=False,
+            )
+
     return list(result_collector.file_results.values())
 
 

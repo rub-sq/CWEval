@@ -37,18 +37,28 @@ for _mod in ['fire', 'numpy', 'natsort', 'psutil']:
             _stub.natsorted = sorted
         sys.modules[_mod] = _stub
 
-from cweval.commons import get_code_blocks, strip_reasoning
+from cweval.commons import REASONING_END_RE, get_code_blocks, strip_reasoning
 
 # renamed 2026-08-27 for the current proprietary registry: gpt54->gpt56sol,
 # gpt54mini->gpt56luna (inferred from pricing - confirm if wrong),
 # sonnet46->sonnet5, gemini3flash->gemini37flash. haiku45 unchanged.
+# Open-weight side expanded 2026-08-28 from the original 6-model subset to
+# all 20 per README.md, same reasoning as the other tools/ scripts.
 MODELS = [
-    'glm45', 'glm52', 'kimik27', 'kimik2think', 'minimaxm2', 'minimaxm3',
-    'gpt56sol', 'gpt56luna', 'sonnet5', 'haiku45', 'gemini37flash',
+    'minimaxm2', 'minimaxm25', 'minimaxm3',
+    'kimik2think', 'kimik25', 'kimik27',
+    'glm45', 'glm47', 'glm52',
+    'deepseekv2', 'deepseekv32', 'deepseekv4pro',
+    'qwen3235b', 'qwen3coder480b', 'qwen35397b',
+    'qwen330b', 'qwen3coder30b', 'qwen3527b',
+    'deepseekv2lite', 'glm47flash',
+    'gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash',
 ]
-# partial run, excluded from every metric. Only its token figures are
-# collected, since they are the reason the run was aborted.
-TOKENS_ONLY = ['gemini31pro']
+# gemini31pro moved into MODELS above 2026-08-28: the original CWEval paper's
+# authors confirmed they lost the Sonnet baseline data, so Sonnet is the model
+# to cut if this study needs to match that paper's comparable set - not a
+# partial/aborted run anymore, replacing sonnet5 as a full participant.
+TOKENS_ONLY: list = []
 AUDIT_DIR = 'evals/audit'
 
 
@@ -149,6 +159,45 @@ def format_compliance():
 
 
 # ------------------------------------------------------------ token stats ---
+def _raw_path_for(meta_path: str) -> str:
+    """evals/.../cwe_020_0_meta.py.json -> evals/.../cwe_020_0_raw.py
+
+    Reverses the naming generate.py writes (meta_path =
+    out_path.replace('_raw.', '_meta.') + '.json').
+    """
+    return meta_path[: -len('.json')].replace('_meta.', '_raw.')
+
+
+def _estimate_reasoning_tokens(meta_path: str, completion_tokens: int):
+    """Character-proportional estimate of reasoning tokens from a raw
+    response's own <think>/<mm:think> boundary, for models whose provider
+    reports no separate reasoning counter (2026-08-28, all 20 open-weight
+    models - vLLM's usage stats don't split completion into the two).
+
+    Not a token count - a token COUNT requires that model's own tokenizer,
+    which isn't available for most of these (weight caches were deleted once
+    each model's generation finished, see [[progress-status]] equivalent
+    note). Instead: find the same reasoning-end tag strip_reasoning() itself
+    uses, take the fraction of the response's CHARACTERS before it, and
+    apply that fraction to completion_tokens - the one number this project
+    already has a real count for, from the generation provider. Returns None
+    (not zero) if the raw file doesn't exist or carries no reasoning tag at
+    all - a model that never reasons is different from one this estimate
+    couldn't be computed for.
+    """
+    raw_path = _raw_path_for(meta_path)
+    if not os.path.exists(raw_path):
+        return None
+    raw = open(raw_path, encoding='utf-8', errors='replace').read()
+    if not raw:
+        return None
+    matches = list(REASONING_END_RE.finditer(raw))
+    if not matches:
+        return 0  # no reasoning tag found - this sample did not reason
+    frac = matches[-1].end() / len(raw)
+    return completion_tokens * frac
+
+
 def token_stats():
     rows = []
     for model in MODELS + TOKENS_ONLY:
@@ -159,14 +208,22 @@ def token_stats():
         # separately by the provider. An absent field means the provider
         # reports no such counter, which is not the same as a counter of zero.
         reas = []
+        # character-proportional estimate (see _estimate_reasoning_tokens),
+        # used only where the provider itself reports no counter at all.
+        reas_est = []
         for mp in metas:
             try:
                 d = json.load(open(mp))
             except (json.JSONDecodeError, OSError):
                 continue
-            toks.append(d.get('completion_tokens') or 0)
+            c = d.get('completion_tokens') or 0
+            toks.append(c)
             if d.get('reasoning_tokens') is not None:
                 reas.append(d['reasoning_tokens'])
+            else:
+                est = _estimate_reasoning_tokens(mp, c)
+                if est is not None:
+                    reas_est.append(est)
         if not toks:
             continue
         toks.sort()
@@ -177,14 +234,19 @@ def token_stats():
         # maximum and the number of non-zero responses are reported next to
         # the mean.
         nonzero = [r for r in reas if r]
+        reported = bool(reas)
+        reas_shown = reas if reported else reas_est
+        nonzero_shown = [r for r in reas_shown if r]
         rows.append({
             'model': model,
             'meta_files': len(toks),
             'completion_tokens_mean': f'{sum(toks) / len(toks):.0f}',
             'completion_tokens_max': '' if batched else toks[-1],
-            'reasoning_tokens_mean': f'{sum(reas) / len(reas):.0f}' if reas else '',
-            'reasoning_tokens_max': max(reas) if reas else '',
-            'reasoning_tokens_nonzero': len(nonzero) if reas else '',
+            'reasoning_tokens_mean': f'{sum(reas_shown) / len(reas_shown):.0f}' if reas_shown else '',
+            'reasoning_tokens_max': f'{max(reas_shown):.0f}' if reas_shown else '',
+            'reasoning_tokens_nonzero': len(nonzero_shown) if reas_shown else '',
+            'reasoning_source': 'reported' if reported else
+                                 ('estimated' if reas_est else ''),
         })
     write_csv(f'{AUDIT_DIR}/token_stats.csv', rows)
 

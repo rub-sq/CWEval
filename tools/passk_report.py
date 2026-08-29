@@ -20,26 +20,34 @@ KS = [1, 10]
 # supports k=50, the third setting of the CWEval paper. The proprietary arm
 # was sampled 20 times and cannot support it.
 KS_OPENWEIGHT = KS + [50]
-OPENWEIGHT = {'glm45', 'glm52', 'kimik27', 'kimik2think', 'minimaxm2', 'minimaxm3'}
+# expanded 2026-08-27 from the original 6-model "headline" subset to all 20
+# open-weight models per README.md, now that all 20 are fully evaluated at
+# N=100 - the narrower set was arbitrarily leaving computable k=50 data out
+# for the other 14.
+OPENWEIGHT = {
+    'minimaxm2', 'minimaxm25', 'minimaxm3',
+    'kimik2think', 'kimik25', 'kimik27',
+    'glm45', 'glm47', 'glm52',
+    'deepseekv2', 'deepseekv32', 'deepseekv4pro',
+    'qwen3235b', 'qwen3coder480b', 'qwen35397b',
+    'qwen330b', 'qwen3coder30b', 'qwen3527b',
+    'deepseekv2lite', 'glm47flash',
+}
 # renamed 2026-08-27 for the current proprietary registry: gpt54->gpt56sol,
 # gpt54mini->gpt56luna (sol/luna inferred from pricing tier - luna is the
 # cheap one, matching "mini" - confirm if wrong), sonnet46->sonnet5,
-# gemini3flash->gemini37flash. haiku45/gemini31pro unchanged. gemini31pro
-# intentionally excluded here, matching the original list - see audit_report.py's
-# TOKENS_ONLY for why (partial/aborted run).
+# gemini3flash->gemini37flash. haiku45/gemini31pro unchanged. Open-weight side
+# expanded from 6 to all 20 the same day, same reasoning as OPENWEIGHT above.
+# sonnet5 -> gemini31pro 2026-08-28: original paper's authors lost the Sonnet
+# baseline data, so Sonnet is the model to cut for comparability - gemini31pro
+# takes its place instead of staying excluded.
 MODELS_FULL = [
     'gpt56sol',
     'gpt56luna',
-    'sonnet5',
+    'gemini31pro',
     'haiku45',
     'gemini37flash',
-    'glm45',
-    'glm52',
-    'kimik27',
-    'kimik2think',
-    'minimaxm2',
-    'minimaxm3',
-]
+] + sorted(OPENWEIGHT)
 # Chapter 5 reads these metrics over all tasks only. The language breakdown of
 # Sections 5.4 and 5.5 uses the insecure rate of breakdown_report.py instead.
 SCOPES = [('all', '')]
@@ -71,19 +79,29 @@ def rows_for(model: str, res: dict, scopes) -> list:
             continue
         for k in KS_OPENWEIGHT if model in OPENWEIGHT else KS:
             # pass_at_k silently returns 1.0 once n - c < k, so a task with
-            # fewer graded samples than k would be scored as solved. Skip the
-            # whole scope in that case rather than report a wrong value.
-            short = min(len(v['functional']) for v in tasks.values())
-            if short < k:
-                print(f'  skip {model}/{scope_name} k={k}: min graded n = {short}')
+            # fewer graded samples than k would be scored as solved if left
+            # in. Exclude just the under-covered task(s) from this k's
+            # average instead of dropping the whole model/scope over one of
+            # them (2026-08-28: e.g. deepseekv2lite has exactly one such task
+            # at k=50, out of 119 - the other 118 have plenty of headroom and
+            # computing k=50 from them is still meaningful). num_tasks
+            # records how many tasks actually went into the average, so a
+            # narrower denominator than the scope's full task count is
+            # visible in the output, not silent.
+            usable = {p: v for p, v in tasks.items() if len(v['functional']) >= k}
+            excluded = len(tasks) - len(usable)
+            if not usable:
+                print(f'  skip {model}/{scope_name} k={k}: no task has {k}+ graded samples')
                 continue
+            if excluded:
+                print(f'  {model}/{scope_name} k={k}: excluding {excluded} task(s) with < {k} graded samples')
             rows.append({
                 'model': model,
                 'scope': scope_name,
-                'num_tasks': len(tasks),
+                'num_tasks': len(usable),
                 'k': k,
-                'func_at_k': f'{rate(tasks, "functional", k):.2f}',
-                'func_sec_at_k': f'{rate(tasks, "func_secure", k):.2f}',
+                'func_at_k': f'{rate(usable, "functional", k):.2f}',
+                'func_sec_at_k': f'{rate(usable, "func_secure", k):.2f}',
             })
     return rows
 
@@ -97,8 +115,14 @@ def write_csv(path: str, rows: list) -> None:
 
 
 def main() -> None:
+    # skip models whose evaluation hasn't run yet rather than crash outright -
+    # generation/evaluation across the two arms of this study finishes at
+    # different times, so a partial MODELS_FULL list is normal (2026-08-28).
     all_rows = []
     for model in MODELS_FULL:
+        if not os.path.exists(os.path.join('evals', f'eval_{model}', 'res_all.json')):
+            print(f'  skip {model}: no res_all.json yet')
+            continue
         all_rows += rows_for(model, load(model), SCOPES)
     write_csv(os.path.join('evals', 'passk_all_models.csv'), all_rows)
 
