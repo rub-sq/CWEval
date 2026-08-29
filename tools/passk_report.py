@@ -20,10 +20,8 @@ KS = [1, 10]
 # supports k=50, the third setting of the CWEval paper. The proprietary arm
 # was sampled 20 times and cannot support it.
 KS_OPENWEIGHT = KS + [50]
-# expanded 2026-08-27 from the original 6-model "headline" subset to all 20
-# open-weight models per README.md, now that all 20 are fully evaluated at
-# N=100 - the narrower set was arbitrarily leaving computable k=50 data out
-# for the other 14.
+# all 20 open-weight models of README.md, each evaluated at N=100 samples
+# per task, which is what supports k=50 for all of them.
 OPENWEIGHT = {
     'minimaxm2', 'minimaxm25', 'minimaxm3',
     'kimik2think', 'kimik25', 'kimik27',
@@ -33,14 +31,7 @@ OPENWEIGHT = {
     'qwen330b', 'qwen3coder30b', 'qwen3527b',
     'deepseekv2lite', 'glm47flash',
 }
-# renamed 2026-08-27 for the current proprietary registry: gpt54->gpt56sol,
-# gpt54mini->gpt56luna (sol/luna inferred from pricing tier - luna is the
-# cheap one, matching "mini" - confirm if wrong), sonnet46->sonnet5,
-# gemini3flash->gemini37flash. haiku45/gemini31pro unchanged. Open-weight side
-# expanded from 6 to all 20 the same day, same reasoning as OPENWEIGHT above.
-# sonnet5 -> gemini31pro 2026-08-28: original paper's authors lost the Sonnet
-# baseline data, so Sonnet is the model to cut for comparability - gemini31pro
-# takes its place instead of staying excluded.
+# the five proprietary models plus all 20 open-weight models of README.md.
 MODELS_FULL = [
     'gpt56sol',
     'gpt56luna',
@@ -82,9 +73,9 @@ def rows_for(model: str, res: dict, scopes) -> list:
             # fewer graded samples than k would be scored as solved if left
             # in. Exclude just the under-covered task(s) from this k's
             # average instead of dropping the whole model/scope over one of
-            # them (2026-08-28: e.g. deepseekv2lite has exactly one such task
-            # at k=50, out of 119 - the other 118 have plenty of headroom and
-            # computing k=50 from them is still meaningful). num_tasks
+            # them - e.g. deepseekv2lite has exactly one such task at k=50,
+            # out of 119; the other 118 have plenty of headroom and
+            # computing k=50 from them is still meaningful. num_tasks
             # records how many tasks actually went into the average, so a
             # narrower denominator than the scope's full task count is
             # visible in the output, not silent.
@@ -117,7 +108,7 @@ def write_csv(path: str, rows: list) -> None:
 def main() -> None:
     # skip models whose evaluation hasn't run yet rather than crash outright -
     # generation/evaluation across the two arms of this study finishes at
-    # different times, so a partial MODELS_FULL list is normal (2026-08-28).
+    # different times, so a partial MODELS_FULL list is normal.
     all_rows = []
     for model in MODELS_FULL:
         if not os.path.exists(os.path.join('evals', f'eval_{model}', 'res_all.json')):

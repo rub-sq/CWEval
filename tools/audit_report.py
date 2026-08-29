@@ -39,11 +39,7 @@ for _mod in ['fire', 'numpy', 'natsort', 'psutil']:
 
 from cweval.commons import REASONING_END_RE, get_code_blocks, strip_reasoning
 
-# renamed 2026-08-27 for the current proprietary registry: gpt54->gpt56sol,
-# gpt54mini->gpt56luna (inferred from pricing - confirm if wrong),
-# sonnet46->sonnet5, gemini3flash->gemini37flash. haiku45 unchanged.
-# Open-weight side expanded 2026-08-28 from the original 6-model subset to
-# all 20 per README.md, same reasoning as the other tools/ scripts.
+# the five proprietary models plus all 20 open-weight models of README.md.
 MODELS = [
     'minimaxm2', 'minimaxm25', 'minimaxm3',
     'kimik2think', 'kimik25', 'kimik27',
@@ -54,10 +50,9 @@ MODELS = [
     'deepseekv2lite', 'glm47flash',
     'gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash',
 ]
-# gemini31pro moved into MODELS above 2026-08-28: the original CWEval paper's
-# authors confirmed they lost the Sonnet baseline data, so Sonnet is the model
-# to cut if this study needs to match that paper's comparable set - not a
-# partial/aborted run anymore, replacing sonnet5 as a full participant.
+# Models to include in token_stats() but not format_compliance() (e.g. a
+# model whose meta files exist but whose raw responses cannot be audited
+# the same way). Empty when every evaluated model gets the full audit.
 TOKENS_ONLY: list = []
 AUDIT_DIR = 'evals/audit'
 
@@ -171,19 +166,19 @@ def _raw_path_for(meta_path: str) -> str:
 def _estimate_reasoning_tokens(meta_path: str, completion_tokens: int):
     """Character-proportional estimate of reasoning tokens from a raw
     response's own <think>/<mm:think> boundary, for models whose provider
-    reports no separate reasoning counter (2026-08-28, all 20 open-weight
-    models - vLLM's usage stats don't split completion into the two).
+    reports no separate reasoning counter (all 20 open-weight models -
+    vLLM's usage stats don't split completion into the two).
 
     Not a token count - a token COUNT requires that model's own tokenizer,
-    which isn't available for most of these (weight caches were deleted once
-    each model's generation finished, see [[progress-status]] equivalent
-    note). Instead: find the same reasoning-end tag strip_reasoning() itself
-    uses, take the fraction of the response's CHARACTERS before it, and
-    apply that fraction to completion_tokens - the one number this project
-    already has a real count for, from the generation provider. Returns None
-    (not zero) if the raw file doesn't exist or carries no reasoning tag at
-    all - a model that never reasons is different from one this estimate
-    couldn't be computed for.
+    which isn't available for most of these (weight caches are deleted
+    once each model's generation finishes). Instead: find the same
+    reasoning-end tag strip_reasoning() itself uses, take the fraction of
+    the response's CHARACTERS before it, and apply that fraction to
+    completion_tokens - the one number this project already has a real
+    count for, from the generation provider. Returns None (not zero) if
+    the raw file doesn't exist or carries no reasoning tag at all - a
+    model that never reasons is different from one this estimate couldn't
+    be computed for.
     """
     raw_path = _raw_path_for(meta_path)
     if not os.path.exists(raw_path):

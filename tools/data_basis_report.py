@@ -39,13 +39,9 @@ for _mod in ['fire', 'numpy', 'natsort', 'psutil']:
 
 from cweval.commons import get_code_blocks, strip_reasoning, select_code_block
 
-# renamed 2026-08-27 for the current proprietary registry: gpt54->gpt56sol,
-# gpt54mini->gpt56luna (inferred from pricing - confirm if wrong),
-# sonnet46->sonnet5, gemini3flash->gemini37flash. haiku45 unchanged.
-# OPENWEIGHT/MODELS expanded the same day from the original 6-model subset to
-# all 20 per README.md, matching the same fix in passk_report.py and
-# breakdown_report.py - all 20 are now fully evaluated, no reason to leave
-# the other 14 out of the coverage/flakiness/threshold reports.
+# all 20 open-weight models of README.md - matches passk_report.py and
+# breakdown_report.py, all fully evaluated and included in the
+# coverage/flakiness/threshold reports.
 OPENWEIGHT = {
     'minimaxm2', 'minimaxm25', 'minimaxm3',
     'kimik2think', 'kimik25', 'kimik27',
@@ -55,8 +51,6 @@ OPENWEIGHT = {
     'qwen330b', 'qwen3coder30b', 'qwen3527b',
     'deepseekv2lite', 'glm47flash',
 }
-# sonnet5 -> gemini31pro 2026-08-28: original paper's authors lost the
-# Sonnet baseline data, so Sonnet is the model to cut for comparability.
 MODELS = sorted(OPENWEIGHT) + [
     'gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash',
 ]
@@ -138,14 +132,15 @@ def coverage():
         )
         # needs each generation's own res.json (per-task verdicts, written by
         # evaluation - not the same file as the aggregate res_all.json).
-        # Coverage can be partial within one model (e.g. haiku45 has res.json
-        # for its first 20 generations from an earlier pass, but not for
-        # samples added since) - filter to just the generations that have it,
-        # rather than an all-or-nothing check on the model (2026-08-28).
+        # Coverage can be partial within one model (a model mid-generation
+        # can have res.json for its earlier generations but not for samples
+        # added since) - filter to just the generations that have it, rather
+        # than an all-or-nothing check on the model.
         gen_paths = [gp for gp in gen_paths if os.path.exists(os.path.join(gp, 'res.json'))]
-        # also needs the aggregate res_all.json below (load_run) - haiku45's
-        # was deliberately set aside as stale (evaluated at n=20, since grown
-        # past that), so exclude it here too rather than report on it half-fresh.
+        # also needs the aggregate res_all.json below (load_run) - a model
+        # whose res_all.json predates its later generations is stale rather
+        # than wrong, so exclude it here too rather than report on it
+        # half-fresh.
         if not gen_paths or not os.path.exists(f'evals/eval_{model}/res_all.json'):
             print(f'  skip {model}: no per-generation res.json, or stale/missing res_all.json')
             continue

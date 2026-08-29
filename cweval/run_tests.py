@@ -119,9 +119,9 @@ def run_tests(
         )
         # print(file_result.brief_str(), flush=True)
 
-    # 2026-08-29: pytest_collection_modifyitems above only fires for test
-    # files pytest actually collects, i.e. ones whose generated code under
-    # test imports cleanly. A file that fails to collect - empty model
+    # pytest_collection_modifyitems above only fires for test files pytest
+    # actually collects, i.e. ones whose generated code under test imports
+    # cleanly. A file that fails to collect - empty model
     # response, no extractable code block, invalid/truncated syntax, missing
     # entrypoint - raises at import time, never reaches that hook, and so
     # never gets a TestFileResult: it silently disappears from res.json (and

@@ -24,25 +24,17 @@ import re
 from collections import defaultdict
 
 # each family's stage-1 -> stage-3 pair, so CURRENT_GEN below covers the
-# latest stage of all 5 open-weight families (was missing DeepSeek/Qwen
-# entirely - fixed 2026-08-27, see also tools/flip_report.py's fuller
-# per-stage PAIRS for the PFR/NFR computation itself).
+# latest stage of all 5 open-weight families. See tools/flip_report.py for
+# the fuller per-stage PAIRS used in the PFR/NFR computation itself.
 PAIRS = [
     ('glm45', 'glm52'), ('kimik2think', 'kimik27'), ('minimaxm2', 'minimaxm3'),
     ('deepseekv2', 'deepseekv4pro'), ('qwen3235b', 'qwen35397b'),
 ]
-# renamed 2026-08-27 for the current proprietary registry: gpt54->gpt56sol,
-# gpt54mini->gpt56luna (inferred from pricing - confirm if wrong),
-# sonnet46->sonnet5, gemini3flash->gemini37flash. haiku45 unchanged.
-# sonnet5 -> gemini31pro 2026-08-28: original paper's authors lost the
-# Sonnet baseline data, so Sonnet is the model to cut for comparability.
 FRONTIER_NEW = ['gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash']
-# all 20 open-weight models per README.md - MODELS (below) expanded to this
-# 2026-08-27 for full language/CWE breakdown coverage, now that all 20 are
-# evaluated; previously only the 10 models appearing in PAIRS were covered,
-# silently dropping the 5 stage-2 models and 5 small siblings. CURRENT_GEN
-# stays narrowly scoped to PAIRS' latest-stage entries - that's a different,
-# deliberately narrower concept (dead_variants() below).
+# all 20 open-weight models of README.md - full language/CWE breakdown
+# coverage. CURRENT_GEN stays narrowly scoped to PAIRS' latest-stage
+# entries - a different, deliberately narrower concept used by
+# dead_variants() below.
 OPENWEIGHT_ALL = [
     'minimaxm2', 'minimaxm25', 'minimaxm3', 'kimik2think', 'kimik25', 'kimik27',
     'glm45', 'glm47', 'glm52', 'deepseekv2', 'deepseekv32', 'deepseekv4pro',
@@ -95,7 +87,7 @@ def main():
     # skip models whose evaluation hasn't run yet rather than crash outright -
     # generation/evaluation across the two arms of this study finishes at
     # different times, so a partial MODELS list is the normal case, not an
-    # error (2026-08-28).
+    # error.
     res_by_model = {}
     for m in MODELS:
         if not os.path.exists(f'evals/eval_{m}/res_all.json'):

@@ -13,7 +13,7 @@
 #     co1lin/cweval bash /host/CWEval/run_eval.sh
 #
 # Optional: pass eval dir names to evaluate only those, e.g.
-#   ... bash /host/CWEval/run_eval.sh eval_gpt54 eval_haiku45
+#   ... bash /host/CWEval/run_eval.sh eval_gpt56sol eval_haiku45
 
 set -u
 
@@ -80,18 +80,31 @@ if [ $# -gt 0 ]; then
     MODELS=("$@")
 else
     MODELS=(
-        eval_glm45
-        eval_glm52
-        eval_kimik27
-        eval_kimik2think
         eval_minimaxm2
+        eval_minimaxm25
         eval_minimaxm3
-        eval_gpt54
-        eval_gpt54mini
-        eval_sonnet46
+        eval_kimik2think
+        eval_kimik25
+        eval_kimik27
+        eval_glm45
+        eval_glm47
+        eval_glm47flash
+        eval_glm52
+        eval_deepseekv2
+        eval_deepseekv2lite
+        eval_deepseekv32
+        eval_deepseekv4pro
+        eval_qwen3235b
+        eval_qwen330b
+        eval_qwen3coder480b
+        eval_qwen3coder30b
+        eval_qwen35397b
+        eval_qwen3527b
+        eval_gpt56sol
+        eval_gpt56luna
         eval_haiku45
-        eval_gemini3flash
         eval_gemini31pro
+        eval_gemini37flash
     )
 fi
 

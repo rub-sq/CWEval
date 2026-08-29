@@ -148,9 +148,8 @@ def table_report(input_path: str = '', return_df: bool = False) -> pd.DataFrame 
     table_data = {}
 
     # Regular expressions for parsing. evaluate.py's report_pass_at_k prints
-    # func/secure/func-sec (renamed from functional/secure/functional_secure
-    # at some point - secure@k had also gone missing entirely, since its
-    # print line was commented out; both fixed 2026-08-27).
+    # func/secure/func-sec per pass@k section - metric_regex below matches
+    # all three.
     section_regex = r"pass@(\d+)\s+([\w/]+)"
     metric_regex = r"(func-sec|func|secure)@(\d+)\s+([\d.]+)"
 

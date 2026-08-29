@@ -5,7 +5,7 @@ The generation step writes one `*_meta.*.json` sidecar per sample next to each
 script reports the per-model average output (completion) tokens per response,
 overall and per language, plus prompt/reasoning context for the cost table.
 
-    python tools/token_report.py --eval_path evals/test_sonnet46
+    python tools/token_report.py --eval_path evals/eval_gpt56sol
 """
 
 import json

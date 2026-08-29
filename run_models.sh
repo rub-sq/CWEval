@@ -15,11 +15,10 @@
 #                                           # NOTE: with multiple model names in one invocation,
 #                                           # each model's batch is submitted+polled to completion
 #                                           # before the next model starts - they do NOT run
-#                                           # concurrently. For N models each near the 24h window,
-#                                           # that's sequential, not N-way parallel; say so if you
-#                                           # want that changed.
+#                                           # concurrently, so N models each near the 24h window
+#                                           # run sequentially, not in parallel.
 #
-# Model names: gpt56sol  gpt56luna  sonnet5  haiku45  gemini31pro  gemini37flash
+# Model names: gpt56sol  gpt56luna  haiku45  gemini31pro  gemini37flash
 #
 # Prerequisites:
 #   export OPENROUTER_API_KEY="sk-or-..."
@@ -37,8 +36,8 @@ export PYTHONPATH="$(pwd)${PYTHONPATH:+:${PYTHONPATH}}"
 # n=20 supports pass@k for every k up to 20; the thesis reports k in {1, 10}
 # max_completion_tokens=65536 matches the open-weight arm's completion cap
 # (hpc/gen_part_0X.slurm) for a fair comparison - actual usage in the N=1
-# pilot never exceeded 16% of even the old 32768 cap, so this is effectively
-# free; REASONING_MAX_TOKENS below is what actually bounds cost
+# pilot never exceeded 16% of the cap, so this is effectively free;
+# REASONING_MAX_TOKENS below is what actually bounds cost
 # num_proc=8 parallelises across tasks; lower to 1 if hitting rate limits
 # ---------------------------------------------------------------------------
 N="${N:-20}"
@@ -60,7 +59,6 @@ model_slug() {
     case "$1" in
         gpt56sol)      echo "openrouter/openai/gpt-5.6-sol" ;;
         gpt56luna)     echo "openrouter/openai/gpt-5.6-luna" ;;
-        sonnet5)       echo "openrouter/anthropic/claude-sonnet-5" ;;
         haiku45)       echo "openrouter/anthropic/claude-haiku-4.5" ;;
         gemini31pro)   echo "openrouter/google/gemini-3.1-pro-preview" ;;
         gemini37flash) echo "openrouter/google/gemini-3.7-flash" ;;
@@ -68,8 +66,8 @@ model_slug() {
     esac
 }
 
-# run order when no argument is given: the new proprietary comparison set
-ALL_MODELS=(gpt56sol gpt56luna sonnet5 haiku45 gemini31pro gemini37flash)
+# run order when no argument is given: the five proprietary models
+ALL_MODELS=(gpt56sol gpt56luna haiku45 gemini31pro gemini37flash)
 
 # ---------------------------------------------------------------------------
 # Skip check: a model is considered complete when generated_{N-1} exists

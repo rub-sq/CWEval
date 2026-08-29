@@ -229,10 +229,10 @@ class OpenRouterBatch:
         resp.raise_for_status()
         return resp.json()
 
-    # Observed live (2026-08-27): a GET immediately after a successful
-    # submit 404'd - the batch id isn't queryable the instant it's created.
-    # Tolerate 404s as "not indexed yet" for a bounded grace window rather
-    # than failing outright; past that window a 404 is treated as real.
+    # A GET immediately after a successful submit can 404 - the batch id
+    # isn't queryable the instant it's created. Tolerate 404s as "not
+    # indexed yet" for a bounded grace window rather than failing outright;
+    # past that window a 404 is treated as real.
     NOT_FOUND_GRACE_S = 300
     INITIAL_DELAY_S = 10  # before the first status check, not just between retries
 

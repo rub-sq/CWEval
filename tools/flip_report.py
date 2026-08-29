@@ -33,8 +33,7 @@ import os
 TOP_N = 5      # Section 5.3 reports the share the five largest tasks carry
 
 # Large-model stage progressions, per README.md's "Large" table: each
-# family's gradual (1->2, 2->3) transitions plus the original direct 1->3
-# jump, added 2026-08-27 at the user's request ("stage 1 to 2. 2 to 3").
+# family's gradual (1->2, 2->3) transitions plus the direct 1->3 jump.
 STAGE_PAIRS = [
     ('minimaxm2', 'minimaxm25'), ('minimaxm25', 'minimaxm3'), ('minimaxm2', 'minimaxm3'),
     ('kimik2think', 'kimik25'), ('kimik25', 'kimik27'), ('kimik2think', 'kimik27'),
@@ -54,10 +53,10 @@ SIBLING_PAIRS = [
 _REAL_PAIRS = STAGE_PAIRS + SIBLING_PAIRS
 # Literal self-comparison (the same model's res_all.json on both sides, not a
 # split) for every model appearing in a real pair above - covers all 20
-# open-weight models. Requested explicitly instead of relying on the
-# noise_floor_old/new columns alone: mathematically identical (r_old == r_new
-# exactly, so repair == regression == r*(1-r)) but reported as its own
-# first-class row per pair/scope rather than a side column on someone else's.
+# open-weight models. Mathematically identical to reading the
+# noise_floor_old/new columns alone (r_old == r_new exactly, so
+# repair == regression == r*(1-r)), but reported as its own first-class row
+# per pair/scope rather than a side column on someone else's.
 _SELF_MODELS = sorted({m for pair in _REAL_PAIRS for m in pair})
 PAIRS = _REAL_PAIRS + [(m, m) for m in _SELF_MODELS]
 SCOPES = [
