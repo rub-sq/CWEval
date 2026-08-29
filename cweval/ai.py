@@ -172,11 +172,18 @@ class OpenRouterBatch:
         # its native slug without that prefix ("anthropic/claude-haiku-4.5").
         model = model[len('openrouter/') :] if model.startswith('openrouter/') else model
         # OpenRouter catalogs the batch-discounted rate as a DISTINCT model id
-        # (e.g. "anthropic/claude-haiku-4.5:batch", confirmed via
-        # /api/v1/models: exactly half the price of the plain id, and its
-        # supported_parameters list drops "max_completion_tokens" - only
-        # "max_tokens" is listed, which is already the field name used below).
-        # Append the suffix so this actually gets billed at that rate.
+        # (e.g. "anthropic/claude-haiku-4.5:batch", "google/gemini-3.7-flash:batch"
+        # - both confirmed as real, separately-priced catalog entries via
+        # openrouter.ai/<slug>:batch). Append the suffix so this actually gets
+        # billed at that rate.
+        # CAVEAT (2026-08-28 live failure): openai/gpt-5.6-sol:batch and
+        # openai/gpt-5.6-luna:batch return "does not have a :batch endpoint"
+        # on submit even though the :batch page exists (unlike the working
+        # examples above, it renders with no pricing shown) - this looks like
+        # a real per-model gap in provider availability for the batch variant
+        # specifically, confirmed by checking the live provider list on
+        # openrouter.ai directly, not a bug in this suffix convention itself.
+        # See submit() below for how that failure surfaces.
         self.model = model if model.endswith(':batch') else f'{model}:batch'
         self.api_key = os.environ['OPENROUTER_API_KEY']
         self.ai_kwargs = ai_kwargs
@@ -215,6 +222,21 @@ class OpenRouterBatch:
             # raise_for_status() alone drops OpenRouter's actual error body (e.g.
             # the specific reason behind a 402) - surface it instead of just the
             # bare status code.
+            if 'does not have a :batch endpoint' in resp.text:
+                # Not every model actually has a working :batch route on
+                # OpenRouter, even if its catalog entry appears to (this has
+                # been observed to return a real batch id that fails later
+                # instead of rejecting immediately, for the same model, on a
+                # different attempt) - this is a structural per-model
+                # limitation, not a transient error worth retrying. Caller
+                # should fall back to synchronous mode (Gener with batch=False)
+                # for this model instead.
+                raise RuntimeError(
+                    f"Batch submit failed: {self.model} does not have a working "
+                    f":batch endpoint on OpenRouter - use synchronous mode "
+                    f"(generate.py without --batch True) for this model instead "
+                    f"of retrying batch submission. Raw response: {resp.text}"
+                )
             raise RuntimeError(
                 f'Batch submit failed: {resp.status_code} {resp.reason} - {resp.text}'
             )

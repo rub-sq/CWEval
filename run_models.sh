@@ -17,6 +17,11 @@
 #                                           # before the next model starts - they do NOT run
 #                                           # concurrently, so N models each near the 24h window
 #                                           # run sequentially, not in parallel.
+#   FORCE_PROVIDER=openai bash run_models.sh <name>...   # pin a specific upstream
+#                                           # provider instead of auto-routing (see
+#                                           # FORCE_PROVIDER below - not confirmed to
+#                                           # work the same way for BATCH_MODE=1, test
+#                                           # small first)
 #
 # Model names: gpt56sol  gpt56luna  haiku45  gemini31pro  gemini37flash
 #
@@ -50,6 +55,15 @@ NUM_PROC="${NUM_PROC:-8}"
 # See openrouter.ai/docs/guides/best-practices/reasoning-tokens.
 REASONING_MAX_TOKENS="${REASONING_MAX_TOKENS:-2048}"
 BATCH_MODE="${BATCH_MODE:-0}"
+# Pin a specific upstream provider (e.g. "openai") instead of letting
+# OpenRouter auto-route/fall back - useful when only one provider actually
+# offers the pricing (e.g. a batch discount) you're relying on. Empty by
+# default (normal auto-routing). Not verified end-to-end against the Batch
+# API specifically (OpenRouter's provider-routing docs describe it for
+# regular chat completions; the batch endpoint isn't explicitly confirmed
+# to honor it the same way) - test on a small N before trusting it for a
+# full run. See openrouter.ai/docs/features/provider-routing.
+FORCE_PROVIDER="${FORCE_PROVIDER:-}"
 
 # ---------------------------------------------------------------------------
 # Model registry  (name -> OpenRouter slug; verified against
@@ -123,9 +137,28 @@ run_model() {
         echo "  -> generating $need_n samples"
     fi
 
+    # built with python's json module rather than string interpolation, since
+    # two independent optional fields (reasoning, provider) need to merge
+    # into one JSON object without one clobbering the other
+    local extra_body_json
+    extra_body_json=$(python - "$REASONING_MAX_TOKENS" "$FORCE_PROVIDER" <<'PYEOF'
+import json, sys
+reasoning_max_tokens, force_provider = sys.argv[1], sys.argv[2]
+body = {}
+if reasoning_max_tokens:
+    body['reasoning'] = {'max_tokens': int(reasoning_max_tokens)}
+if force_provider:
+    # allow_fallbacks=False: fail outright rather than silently falling back
+    # to a different (potentially un-discounted, or plain-priced) provider -
+    # the whole point of forcing one is knowing which provider you're paying
+    # for. See openrouter.ai/docs/features/provider-routing.
+    body['provider'] = {'order': [force_provider], 'allow_fallbacks': False}
+print(json.dumps(body))
+PYEOF
+    )
     local extra_body_args=()
-    if [[ -n "$REASONING_MAX_TOKENS" ]]; then
-        extra_body_args=(--extra_body "{\"reasoning\": {\"max_tokens\": $REASONING_MAX_TOKENS}}")
+    if [[ "$extra_body_json" != "{}" ]]; then
+        extra_body_args=(--extra_body "$extra_body_json")
     fi
 
     local batch_args=()
