@@ -22,6 +22,7 @@ evals
 └── pytest.ini
 """
 
+import base64
 import datetime
 import json
 import os
@@ -67,6 +68,20 @@ class Gener:
         # skips the "already exists, continue?" prompt below (used by
         # run_models.sh instead of piping 'y' into stdin)
         assume_yes: bool = False,
+        # base64(json) form of extra_body (e.g. {"reasoning": {"max_tokens":
+        # 2048}, "provider": {"order": ["openai"], "allow_fallbacks": false}}).
+        # NOT a plain --extra_body '{"...": false}' flag: fire.Fire's CLI
+        # parsing applies its own literal-eval-style coercion to string
+        # arguments, and a JSON `false`/`true`/`null` is not a valid Python
+        # literal (those are `False`/`True`/`None`) - confirmed live, this
+        # silently turns a JSON boolean into the *string* 'false' instead of
+        # the Python bool, which OpenRouter then rejects ("expected boolean,
+        # received string") deep inside litellm with a confusing traceback.
+        # Base64 makes the argument opaque to fire's parser (it no longer
+        # looks like any Python literal), so it always arrives here as a
+        # plain str for us to decode and json.loads ourselves, with correct
+        # types guaranteed regardless of what's inside.
+        extra_body_b64: str = '',
         **kwargs,
     ):
         self.model = model
@@ -84,6 +99,8 @@ class Gener:
             'temperature': temperature,
             **kwargs,
         }
+        if extra_body_b64:
+            self.ai_kwargs['extra_body'] = json.loads(base64.b64decode(extra_body_b64))
 
         if not eval_path:
             self.eval_path = os.path.join(

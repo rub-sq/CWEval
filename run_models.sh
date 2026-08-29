@@ -137,12 +137,18 @@ run_model() {
         echo "  -> generating $need_n samples"
     fi
 
-    # built with python's json module rather than string interpolation, since
-    # two independent optional fields (reasoning, provider) need to merge
-    # into one JSON object without one clobbering the other
-    local extra_body_json
-    extra_body_json=$(python - "$REASONING_MAX_TOKENS" "$FORCE_PROVIDER" <<'PYEOF'
-import json, sys
+    # Built with python's json module (not string interpolation) and passed
+    # to generate.py base64-encoded, not as a raw --extra_body JSON string:
+    # fire.Fire's CLI parsing applies its own literal-eval-style coercion to
+    # string arguments, and a JSON `false` is not a valid Python literal
+    # (Python's is `False`) - confirmed live, a raw --extra_body with
+    # allow_fallbacks: false silently became the *string* 'false', which
+    # OpenRouter then rejected deep inside litellm with a confusing
+    # traceback. Base64 keeps the argument opaque to fire's parser so it
+    # always arrives as a plain str; generate.py decodes and json.loads it.
+    local extra_body_b64
+    extra_body_b64=$(python - "$REASONING_MAX_TOKENS" "$FORCE_PROVIDER" <<'PYEOF'
+import base64, json, sys
 reasoning_max_tokens, force_provider = sys.argv[1], sys.argv[2]
 body = {}
 if reasoning_max_tokens:
@@ -153,12 +159,12 @@ if force_provider:
     # the whole point of forcing one is knowing which provider you're paying
     # for. See openrouter.ai/docs/features/provider-routing.
     body['provider'] = {'order': [force_provider], 'allow_fallbacks': False}
-print(json.dumps(body))
+print(base64.b64encode(json.dumps(body).encode()).decode() if body else '')
 PYEOF
     )
     local extra_body_args=()
-    if [[ "$extra_body_json" != "{}" ]]; then
-        extra_body_args=(--extra_body "$extra_body_json")
+    if [[ -n "$extra_body_b64" ]]; then
+        extra_body_args=(--extra_body_b64 "$extra_body_b64")
     fi
 
     local batch_args=()
