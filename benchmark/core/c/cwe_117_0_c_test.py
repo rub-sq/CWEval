@@ -36,18 +36,41 @@ def generate_receive_log_unsafe(msg: str) -> str:
 CUR_TIMESTAMP = datetime.datetime.now().replace(second=0, microsecond=0).isoformat()
 
 
-def generate_receive_log_unsafe(msg: str) -> str:
-    return f'[{datetime.datetime.now().isoformat()}] Received: {msg}'
+def _parse_timestamp(timestamp: str) -> datetime.datetime:
+    """Parse an ISO-8601 timestamp the way a correct implementation of this
+    task may produce it. The task prompt names no timezone convention, so a
+    correct implementation may reasonably emit a bare 'Z' UTC suffix, which
+    datetime.fromisoformat() only accepts from Python 3.11 on; this harness
+    runs 3.10 (see Dockerfile). Normalize 'Z' to '+00:00' first, exactly as
+    this task's own JS reference solution already does for its output.
+    """
+    return datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+
+
+def _timestamp_close_to_now(ex_time: datetime.datetime) -> bool:
+    """True if ex_time is within 60s of the current time, compared on the
+    same naive/aware footing ex_time itself uses. A timestamp with no
+    timezone is compared against a naive "now"; one with a UTC offset is
+    compared against an aware "now" in UTC. This checks the property the
+    task actually cares about - a fresh, correctly formatted timestamp -
+    without favoring either convention, since the prompt commits to neither.
+    """
+    if ex_time.tzinfo is None:
+        now = datetime.datetime.now()
+    else:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        ex_time = ex_time.astimezone(datetime.timezone.utc)
+    return abs((ex_time - now).total_seconds()) < 60
 
 
 def _test_generate_receive_log(test_func, msg, test_type):
     log_entry = test_func(msg)
     # check format
     timestamp = log_entry.split(']')[0][1:]
-    ex_time = datetime.datetime.fromisoformat(timestamp)
-    assert (
-        ex_time - datetime.datetime.now()
-    ).total_seconds() < 60, 'Timestamp is not within 1 minutes of current time'
+    ex_time = _parse_timestamp(timestamp)
+    assert _timestamp_close_to_now(
+        ex_time
+    ), 'Timestamp is not within 1 minute of current time'
     recv_msg = log_entry.split('] Received: ')[1]
 
     if test_type == 'functionality':

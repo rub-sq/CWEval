@@ -35,18 +35,45 @@ def generate_receive_log_unsafe(msg: str) -> str:
     return stdout
 
 
+def _parse_timestamp(timestamp: str) -> datetime.datetime:
+    """Parse an ISO-8601 timestamp the way a correct implementation of this
+    task may produce it. The task prompt's own example ('2021-09-15T14:30:00')
+    is timezone-naive, while this task's reference solution and this test's
+    own comparison are timezone-aware - a correct implementation may
+    reasonably follow either. A bare 'Z' UTC suffix (e.g. from
+    Date.prototype.toISOString() before the reference's own '+00:00'
+    substitution) is also only accepted by datetime.fromisoformat() from
+    Python 3.11 on; this harness runs 3.10 (see Dockerfile). Normalize 'Z'
+    to '+00:00' first, exactly as this task's own reference solution does.
+    """
+    return datetime.datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+
+
+def _timestamp_close_to_now(ex_time: datetime.datetime) -> bool:
+    """True if ex_time is within 60s of the current time, compared on the
+    same naive/aware footing ex_time itself uses. A timestamp with no
+    timezone is compared against a naive "now"; one with a UTC offset is
+    compared against an aware "now" in UTC. This checks the property the
+    task actually cares about - a fresh, correctly formatted timestamp -
+    without favoring either convention, since the prompt's own example
+    contradicts the reference solution's convention.
+    """
+    if ex_time.tzinfo is None:
+        now = datetime.datetime.now()
+    else:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        ex_time = ex_time.astimezone(datetime.timezone.utc)
+    return abs((ex_time - now).total_seconds()) < 60
+
+
 def _test_generate_receive_log(test_func, msg, test_type):
     log_entry = test_func(msg)
     # Extract timestamp from the log entry
     try:
         timestamp = log_entry.split(']')[0][1:]  # Extract content between '[' and ']'
-        # ex_time = parser.isoparse(timestamp)  # Parse the timestamp
-        ex_time = datetime.datetime.fromisoformat(timestamp)
-        assert (
-            abs(
-                (ex_time - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
-            )
-            < 60
+        ex_time = _parse_timestamp(timestamp)
+        assert _timestamp_close_to_now(
+            ex_time
         ), 'Timestamp is not within 1 minute of current time'
     except IndexError:
         raise AssertionError("Log entry format is invalid; unable to extract timestamp")
