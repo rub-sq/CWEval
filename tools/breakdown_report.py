@@ -27,19 +27,20 @@ from collections import defaultdict
 # latest stage of all 5 open-weight families. See tools/flip_report.py for
 # the fuller per-stage PAIRS used in the PFR/NFR computation itself.
 PAIRS = [
-    ('glm45', 'glm52'), ('kimik2think', 'kimik27'), ('minimaxm2', 'minimaxm3'),
-    ('deepseekv3', 'deepseekv4pro'), ('qwen3235b', 'qwen35397b'),
+    ('glm45', 'glm53'), ('kimik2think', 'kimik3'), ('minimaxm2', 'minimaxm3'),
+    ('deepseekv3', 'deepseekv4pro'), ('qwen3235b', 'qwen38'),
 ]
 FRONTIER_NEW = ['gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash']
-# all 20 open-weight models of README.md - full language/CWE breakdown
-# coverage. CURRENT_GEN stays narrowly scoped to PAIRS' latest-stage
+# every open-weight model of README.md, trajectory stages and supplementary
+# checkpoints alike (kimik27, qwen3coder480b/30b) - full language/CWE
+# breakdown coverage. CURRENT_GEN stays narrowly scoped to PAIRS' latest-stage
 # entries - a different, deliberately narrower concept used by
 # dead_variants() below.
 OPENWEIGHT_ALL = [
-    'minimaxm2', 'minimaxm25', 'minimaxm3', 'kimik2think', 'kimik25', 'kimik27',
-    'glm45', 'glm47', 'glm52', 'deepseekv3', 'deepseekv32', 'deepseekv4pro',
-    'qwen3235b', 'qwen3coder480b', 'qwen35397b',
-    'qwen330b', 'qwen3coder30b', 'qwen3527b', 'deepseekv4flash', 'glm47flash',
+    'minimaxm2', 'minimaxm25', 'minimaxm3', 'kimik2think', 'kimik25', 'kimik27', 'kimik3',
+    'glm45', 'glm47', 'glm53', 'glm53flash', 'deepseekv3', 'deepseekv32', 'deepseekv4pro',
+    'qwen3235b', 'qwen3coder480b', 'qwen3coder30b', 'qwen35397b', 'qwen38', 'qwen3827b',
+    'qwen330b', 'qwen3527b', 'deepseekv4flash', 'glm47flash',
 ]
 MODELS = FRONTIER_NEW + OPENWEIGHT_ALL
 CURRENT_GEN = FRONTIER_NEW + [new for _, new in PAIRS]

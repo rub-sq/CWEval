@@ -92,10 +92,20 @@ class AIAPI(abc.ABC):
             ]
 
         n_samples = all_kwargs.pop('n', 1)
-        max_n_per_req: int = {
-            'openai': 128,
-            'gemini': 8,
-        }.get(self.provider, 1)
+        # Self-hosted vLLM (hpc/gen_part_0X.slurm) resolves to the same
+        # 'openai' provider tag as everything else on litellm's generic path,
+        # so it would otherwise inherit the 128-per-request default below -
+        # one request per task carrying all n=100 samples, with nothing
+        # written to disk until that whole request returns. Chunking to one
+        # completion per request here means each sample lands as soon as
+        # it's done, so a slow model still makes resumable progress.
+        if 'api_base' in all_kwargs and '127.0.0.1' in (all_kwargs.get('api_base') or ''):
+            max_n_per_req = 1
+        else:
+            max_n_per_req: int = {
+                'openai': 128,
+                'gemini': 8,
+            }.get(self.provider, 1)
 
         resp: List[str] = []
         usages: List[Dict] = []

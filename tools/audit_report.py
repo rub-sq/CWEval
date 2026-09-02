@@ -39,15 +39,15 @@ for _mod in ['fire', 'numpy', 'natsort', 'psutil']:
 
 from cweval.commons import REASONING_END_RE, get_code_blocks, strip_reasoning
 
-# the five proprietary models plus all 20 open-weight models of README.md.
+# the five proprietary models plus every open-weight model of README.md.
 MODELS = [
     'minimaxm2', 'minimaxm25', 'minimaxm3',
-    'kimik2think', 'kimik25', 'kimik27',
-    'glm45', 'glm47', 'glm52',
+    'kimik2think', 'kimik25', 'kimik27', 'kimik3',
+    'glm45', 'glm47', 'glm53',
     'deepseekv3', 'deepseekv32', 'deepseekv4pro',
-    'qwen3235b', 'qwen3coder480b', 'qwen35397b',
-    'qwen330b', 'qwen3coder30b', 'qwen3527b',
-    'deepseekv4flash', 'glm47flash',
+    'qwen3235b', 'qwen3coder480b', 'qwen35397b', 'qwen38',
+    'qwen330b', 'qwen3coder30b', 'qwen3527b', 'qwen3827b',
+    'deepseekv4flash', 'glm47flash', 'glm53flash',
     'gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash',
 ]
 # Models to include in token_stats() but not format_compliance() (e.g. a
@@ -171,7 +171,7 @@ def _raw_path_for(meta_path: str) -> str:
 def _estimate_reasoning_tokens(meta_path: str, completion_tokens: int):
     """Character-proportional estimate of reasoning tokens from a raw
     response's own <think>/<mm:think> boundary, for models whose provider
-    reports no separate reasoning counter (all 20 open-weight models -
+    reports no separate reasoning counter (every open-weight model -
     vLLM's usage stats don't split completion into the two).
 
     Not a token count - a token COUNT requires that model's own tokenizer,

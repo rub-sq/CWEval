@@ -34,29 +34,31 @@ TOP_N = 5      # Section 5.3 reports the share the five largest tasks carry
 
 # Large-model stage progressions, per README.md's "Large" table: each
 # family's gradual (1->2, 2->3) transitions plus the direct 1->3 jump.
+# kimik27 and both qwen3coder models are supplementary (coding-specialized,
+# not a generational stage) and excluded here, same as everywhere else -
+# see README.md's "Supplementary" table.
 STAGE_PAIRS = [
     ('minimaxm2', 'minimaxm25'), ('minimaxm25', 'minimaxm3'), ('minimaxm2', 'minimaxm3'),
-    ('kimik2think', 'kimik25'), ('kimik25', 'kimik27'), ('kimik2think', 'kimik27'),
-    ('glm45', 'glm47'), ('glm47', 'glm52'), ('glm45', 'glm52'),
+    ('kimik2think', 'kimik25'), ('kimik25', 'kimik3'), ('kimik2think', 'kimik3'),
+    ('glm45', 'glm47'), ('glm47', 'glm53'), ('glm45', 'glm53'),
     ('deepseekv3', 'deepseekv32'), ('deepseekv32', 'deepseekv4pro'), ('deepseekv3', 'deepseekv4pro'),
-    ('qwen3235b', 'qwen3coder480b'), ('qwen3coder480b', 'qwen35397b'), ('qwen3235b', 'qwen35397b'),
+    ('qwen3235b', 'qwen35397b'), ('qwen35397b', 'qwen38'), ('qwen3235b', 'qwen38'),
 ]
 # Small-vs-large size-matched sibling pairs at the same stage, per README.md's
 # "Small" table ("every small model sibling against its own big brother").
 SIBLING_PAIRS = [
     ('qwen330b', 'qwen3235b'),
-    ('qwen3coder30b', 'qwen3coder480b'),
     ('qwen3527b', 'qwen35397b'),
+    ('qwen3827b', 'qwen38'),
     ('deepseekv4flash', 'deepseekv4pro'),
     ('glm47flash', 'glm47'),
+    ('glm53flash', 'glm53'),
 ]
 _REAL_PAIRS = STAGE_PAIRS + SIBLING_PAIRS
 # Literal self-comparison (the same model's res_all.json on both sides, not a
-# split) for every model appearing in a real pair above - covers all 20
-# open-weight models. Mathematically identical to reading the
-# noise_floor_old/new columns alone (r_old == r_new exactly, so
-# repair == regression == r*(1-r)), but reported as its own first-class row
-# per pair/scope rather than a side column on someone else's.
+# split) for every model appearing in a real pair above. Mathematically
+# identical to reading noise_floor_old/new alone (r_old == r_new, so
+# repair == regression == r*(1-r)), but reported as its own row.
 _SELF_MODELS = sorted({m for pair in _REAL_PAIRS for m in pair})
 PAIRS = _REAL_PAIRS + [(m, m) for m in _SELF_MODELS]
 SCOPES = [

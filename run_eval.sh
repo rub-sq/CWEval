@@ -86,10 +86,12 @@ else
         eval_kimik2think
         eval_kimik25
         eval_kimik27
+        eval_kimik3
         eval_glm45
         eval_glm47
         eval_glm47flash
-        eval_glm52
+        eval_glm53
+        eval_glm53flash
         eval_deepseekv3
         eval_deepseekv32
         eval_deepseekv4pro
@@ -100,6 +102,8 @@ else
         eval_qwen3coder30b
         eval_qwen35397b
         eval_qwen3527b
+        eval_qwen38
+        eval_qwen3827b
         eval_gpt56sol
         eval_gpt56luna
         eval_haiku45
