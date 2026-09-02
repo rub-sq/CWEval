@@ -38,14 +38,14 @@ export PYTHONPATH="$(pwd)${PYTHONPATH:+:${PYTHONPATH}}"
 
 # ---------------------------------------------------------------------------
 # Generation parameters (override via env, e.g. N=10 bash run_models.sh ...)
-# n=20 supports pass@k for every k up to 20; the thesis reports k in {1, 10}
+# n=100 matches the open-weight arm, supporting pass@k up to k=50.
 # max_completion_tokens=65536 matches the open-weight arm's completion cap
 # (hpc/gen_part_0X.slurm) for a fair comparison - actual usage in the N=1
 # pilot never exceeded 16% of the cap, so this is effectively free;
 # REASONING_MAX_TOKENS below is what actually bounds cost
 # num_proc=8 parallelises across tasks; lower to 1 if hitting rate limits
 # ---------------------------------------------------------------------------
-N="${N:-20}"
+N="${N:-100}"
 TEMPERATURE="${TEMPERATURE:-0.8}"
 MAX_TOKENS="${MAX_TOKENS:-65536}"
 NUM_PROC="${NUM_PROC:-8}"

@@ -15,14 +15,24 @@ import json
 import os
 from math import comb
 
-KS = [1, 10]
-# the open-weight arm was sampled 100 times per task and therefore also
-# supports k=50, the third setting of the CWEval paper. The proprietary arm
-# was sampled 20 times and cannot support it.
-KS_OPENWEIGHT = KS + [50]
+# k=50, the third setting of the CWEval paper, needs >=50 samples/task -
+# every model in this study (open-weight, this study's own proprietary arm,
+# and the old-generation baselines below) targets N=100, so all of them
+# support it once evaluated.
+KS = [1, 10, 50]
+FRONTIER = {'gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash'}
+# old-generation proprietary baselines (CWEval paper Table I models), kept
+# outside evals/ since they're historical reference data, not this study's
+# own runs. Real res_all.json, 100 samples/task, same as OPENWEIGHT.
+OLD_BASELINE = {
+    'gpt4o': '../eval_backups/original_paper/eval_4o_t8',
+    'gpt4omini': '../eval_backups/original_paper/eval_4omini_t8',
+    'haiku35': '../eval_backups/original_paper/eval_haiku_t8',
+    'gemini15pro': '../eval_backups/original_paper/eval_gpro_t8',
+    'gemini15flash': '../eval_backups/original_paper/eval_gflash_t8',
+}
 # every open-weight model of README.md, trajectory stages and supplementary
-# checkpoints alike, each evaluated at N=100 samples per task, which is what
-# supports k=50 for all of them.
+# checkpoints alike, each evaluated at N=100 samples per task.
 OPENWEIGHT = {
     'minimaxm2', 'minimaxm25', 'minimaxm3',
     'kimik2think', 'kimik25', 'kimik27', 'kimik3',
@@ -32,14 +42,9 @@ OPENWEIGHT = {
     'qwen330b', 'qwen3527b',
     'deepseekv4flash', 'glm47flash',
 }
-# the five proprietary models plus every open-weight model of README.md.
-MODELS_FULL = [
-    'gpt56sol',
-    'gpt56luna',
-    'gemini31pro',
-    'haiku45',
-    'gemini37flash',
-] + sorted(OPENWEIGHT)
+# this study's own proprietary models, every open-weight model of README.md,
+# and the five old-generation baselines.
+MODELS_FULL = sorted(FRONTIER) + sorted(OPENWEIGHT) + sorted(OLD_BASELINE)
 # Chapter 5 reads these metrics over all tasks only. The language breakdown of
 # Sections 5.4 and 5.5 uses the insecure rate of breakdown_report.py instead.
 SCOPES = [('all', '')]
@@ -52,9 +57,14 @@ def pass_at_k(n: int, c: int, k: int) -> float:
     return 1.0 - comb(n - c, k) / comb(n, k)
 
 
+def res_path(model: str) -> str:
+    if model in OLD_BASELINE:
+        return os.path.join(OLD_BASELINE[model], 'res_all.json')
+    return os.path.join('evals', f'eval_{model}', 'res_all.json')
+
+
 def load(model: str) -> dict:
-    path = os.path.join('evals', f'eval_{model}', 'res_all.json')
-    with open(path) as f:
+    with open(res_path(model)) as f:
         return json.load(f)
 
 
@@ -69,7 +79,7 @@ def rows_for(model: str, res: dict, scopes) -> list:
         tasks = {p: v for p, v in res.items() if path_filter in p}
         if not tasks:
             continue
-        for k in KS_OPENWEIGHT if model in OPENWEIGHT else KS:
+        for k in KS:
             # pass_at_k silently returns 1.0 once n - c < k, so a task with
             # fewer graded samples than k would be scored as solved if left
             # in. Exclude just the under-covered task(s) from this k's
@@ -112,7 +122,7 @@ def main() -> None:
     # different times, so a partial MODELS_FULL list is normal.
     all_rows = []
     for model in MODELS_FULL:
-        if not os.path.exists(os.path.join('evals', f'eval_{model}', 'res_all.json')):
+        if not os.path.exists(res_path(model)):
             print(f'  skip {model}: no res_all.json yet')
             continue
         all_rows += rows_for(model, load(model), SCOPES)
