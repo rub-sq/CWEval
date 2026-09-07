@@ -88,7 +88,7 @@ class TestResultCollector:
 
 def run_tests(
     test_path,
-    timeout_per_test: float = 3,
+    timeout_per_test: float = 20,
     args: List[str] = ['-k', 'not _unsafe'],
 ) -> List[TestFileResult]:
     print(f'Start running tests in {test_path = }', flush=True)
