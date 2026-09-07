@@ -31,6 +31,15 @@ PAIRS = [
     ('deepseekv3', 'deepseekv4pro'), ('qwen3235b', 'qwen38'),
 ]
 FRONTIER_NEW = ['gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash']
+# old-generation proprietary baselines (CWEval paper Table I), same historical
+# reference data as passk_report.py's OLD_BASELINE.
+OLD_BASELINE = {
+    'gpt4o': '../eval_backups/original_paper/eval_4o_t8',
+    'gpt4omini': '../eval_backups/original_paper/eval_4omini_t8',
+    'haiku35': '../eval_backups/original_paper/eval_haiku_t8',
+    'gemini15pro': '../eval_backups/original_paper/eval_gpro_t8',
+    'gemini15flash': '../eval_backups/original_paper/eval_gflash_t8',
+}
 # every open-weight model of README.md, trajectory stages and supplementary
 # checkpoints alike (kimik27, qwen3coder480b/30b) - full language/CWE
 # breakdown coverage. CURRENT_GEN stays narrowly scoped to PAIRS' latest-stage
@@ -42,15 +51,21 @@ OPENWEIGHT_ALL = [
     'qwen3235b', 'qwen3coder480b', 'qwen3coder30b', 'qwen35397b', 'qwen38', 'qwen3827b',
     'qwen330b', 'qwen3527b', 'deepseekv4flash', 'glm47flash',
 ]
-MODELS = FRONTIER_NEW + OPENWEIGHT_ALL
+MODELS = FRONTIER_NEW + OPENWEIGHT_ALL + sorted(OLD_BASELINE)
 CURRENT_GEN = FRONTIER_NEW + [new for _, new in PAIRS]
 LANG_ORDER = ['all', 'py', 'c', 'cpp', 'go', 'js', 'lang-c']
 MIN_TASKS = 3
 OUT_DIR = 'evals/breakdowns'
 
 
+def res_path(model):
+    if model in OLD_BASELINE:
+        return os.path.join(OLD_BASELINE[model], 'res_all.json')
+    return f'evals/eval_{model}/res_all.json'
+
+
 def load(model):
-    return json.load(open(f'evals/eval_{model}/res_all.json'))
+    return json.load(open(res_path(model)))
 
 
 def write_csv(path, rows):
@@ -91,7 +106,7 @@ def main():
     # error.
     res_by_model = {}
     for m in MODELS:
-        if not os.path.exists(f'evals/eval_{m}/res_all.json'):
+        if not os.path.exists(res_path(m)):
             print(f'  skip {m}: no res_all.json yet')
             continue
         res_by_model[m] = load(m)

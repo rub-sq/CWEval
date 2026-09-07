@@ -54,7 +54,24 @@ SIBLING_PAIRS = [
     ('glm47flash', 'glm47'),
     ('glm53flash', 'glm53'),
 ]
-_REAL_PAIRS = STAGE_PAIRS + SIBLING_PAIRS
+# old-generation proprietary baselines (CWEval paper Table I) against this
+# study's frontier proprietary models, same generational-stage idea as
+# STAGE_PAIRS above, one old->new pair per family (flagship->flagship,
+# mini/fast->luna). See tools/passk_report.py's OLD_BASELINE for the same
+# historical reference data.
+PROPRIETARY_PAIRS = [
+    ('gpt4o', 'gpt56sol'), ('gpt4omini', 'gpt56luna'),
+    ('haiku35', 'haiku45'),
+    ('gemini15pro', 'gemini31pro'), ('gemini15flash', 'gemini37flash'),
+]
+OLD_BASELINE = {
+    'gpt4o': '../eval_backups/original_paper/eval_4o_t8',
+    'gpt4omini': '../eval_backups/original_paper/eval_4omini_t8',
+    'haiku35': '../eval_backups/original_paper/eval_haiku_t8',
+    'gemini15pro': '../eval_backups/original_paper/eval_gpro_t8',
+    'gemini15flash': '../eval_backups/original_paper/eval_gflash_t8',
+}
+_REAL_PAIRS = STAGE_PAIRS + SIBLING_PAIRS + PROPRIETARY_PAIRS
 # Literal self-comparison (the same model's res_all.json on both sides, not a
 # split) for every model appearing in a real pair above. Mathematically
 # identical to reading noise_floor_old/new alone (r_old == r_new, so
@@ -72,9 +89,14 @@ SCOPES = [
 ]
 
 
+def res_path(model: str) -> str:
+    if model in OLD_BASELINE:
+        return os.path.join(OLD_BASELINE[model], 'res_all.json')
+    return os.path.join('evals', f'eval_{model}', 'res_all.json')
+
+
 def load_secure_rates(model: str) -> dict:
-    path = os.path.join('evals', f'eval_{model}', 'res_all.json')
-    with open(path) as f:
+    with open(res_path(model)) as f:
         res = json.load(f)
     rates = {}
     for key, fields in res.items():
@@ -87,10 +109,16 @@ def load_secure_rates(model: str) -> dict:
 def pair_rows(old: str, new: str) -> tuple:
     rates_old = load_secure_rates(old)
     rates_new = load_secure_rates(new)
-    assert set(rates_old) == set(rates_new), f'task sets differ: {old} vs {new}'
+    # Old-generation baselines can be missing a task or two (e.g. haiku_t8 has
+    # 118 of 119) - a pre-existing data characteristic, not a bug. Compute over
+    # the intersection instead of crashing the whole report on one pair.
+    tasks = set(rates_old) & set(rates_new)
+    missing = (set(rates_old) | set(rates_new)) - tasks
+    if missing:
+        print(f'  {old}->{new}: {len(missing)} task(s) missing on one side, excluded')
 
     detail = []
-    for task in sorted(rates_old):
+    for task in sorted(tasks):
         c_o, n_o = rates_old[task]
         c_n, n_n = rates_new[task]
         r_o, r_n = c_o / n_o, c_n / n_n
@@ -160,7 +188,7 @@ def write_csv(path: str, rows: list) -> None:
 
 
 def _has_data(model: str) -> bool:
-    return os.path.exists(os.path.join('evals', f'eval_{model}', 'res_all.json'))
+    return os.path.exists(res_path(model))
 
 
 def main() -> None:

@@ -24,7 +24,7 @@ set -u
 # Where this pass stores its results. Use a different directory for every pass.
 #   first pass:   evals/_run_A_2026-08-06
 #   second pass:  evals/_run_B_2026-08-06
-OUT_DIR=evals/_run_A_$(date +%F)
+OUT_DIR=${OUT_DIR:-evals/_run_A_$(date +%F)}
 
 # Leave EMPTY for the first pass. Then the live files under evals/eval_<model>/
 # hold this pass, and the report scripts in tools/ read it.
@@ -33,7 +33,7 @@ OUT_DIR=evals/_run_A_$(date +%F)
 # the live files are restored from it, so the working tree stays on the first
 # pass and the reports keep reading it. The second pass then exists only in its
 # own OUT_DIR, which is exactly what data_basis_report.py compares against.
-RESTORE_FROM=
+RESTORE_FROM=${RESTORE_FROM:-}
 
 # ===========================================================================
 #  Everything below stays as it is
