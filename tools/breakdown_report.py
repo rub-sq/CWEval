@@ -23,12 +23,12 @@ import os
 import re
 from collections import defaultdict
 
-# each family's stage-1 -> stage-3 pair, so CURRENT_GEN below covers the
+# each family's stage-1 -> latest-stage pair, so CURRENT_GEN below covers the
 # latest stage of all 5 open-weight families. See tools/flip_report.py for
 # the fuller per-stage PAIRS used in the PFR/NFR computation itself.
 PAIRS = [
-    ('glm45', 'glm53'), ('kimik2think', 'kimik3'), ('minimaxm2', 'minimaxm3'),
-    ('deepseekv3', 'deepseekv4pro'), ('qwen3235b', 'qwen38'),
+    ('glm45', 'glm52'), ('kimik2think', 'kimik27'), ('minimaxm21', 'minimaxm3'),
+    ('deepseekv3', 'deepseekv4pro'), ('qwen3235b', 'qwen35397b'),
 ]
 FRONTIER_NEW = ['gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash']
 # old-generation proprietary baselines (CWEval paper Table I), same historical
@@ -40,16 +40,14 @@ OLD_BASELINE = {
     'gemini15pro': '../eval_backups/original_paper/eval_gpro_t8',
     'gemini15flash': '../eval_backups/original_paper/eval_gflash_t8',
 }
-# every open-weight model of README.md, trajectory stages and supplementary
-# checkpoints alike (kimik27, qwen3coder480b/30b) - full language/CWE
-# breakdown coverage. CURRENT_GEN stays narrowly scoped to PAIRS' latest-stage
-# entries - a different, deliberately narrower concept used by
-# dead_variants() below.
+# every open-weight model of README.md - full language/CWE breakdown coverage.
+# CURRENT_GEN stays narrowly scoped to PAIRS' latest-stage entries - a
+# different, deliberately narrower concept used by dead_variants() below.
 OPENWEIGHT_ALL = [
-    'minimaxm2', 'minimaxm25', 'minimaxm3', 'kimik2think', 'kimik25', 'kimik27', 'kimik3',
-    'glm45', 'glm47', 'glm53', 'glm53flash', 'deepseekv3', 'deepseekv32', 'deepseekv4pro',
-    'qwen3235b', 'qwen3coder480b', 'qwen3coder30b', 'qwen35397b', 'qwen38', 'qwen3827b',
-    'qwen330b', 'qwen3527b', 'deepseekv4flash', 'glm47flash',
+    'minimaxm21', 'minimaxm25', 'minimaxm3', 'kimik2think', 'kimik25', 'kimik27',
+    'glm45', 'glm47', 'glm47flash', 'glm52', 'deepseekv3', 'deepseekv32', 'deepseekv4pro',
+    'deepseekv4flash', 'qwen3235b', 'qwen330b', 'qwen3coder480b', 'qwen3coder30b',
+    'qwen35397b', 'qwen3527b',
 ]
 MODELS = FRONTIER_NEW + OPENWEIGHT_ALL + sorted(OLD_BASELINE)
 CURRENT_GEN = FRONTIER_NEW + [new for _, new in PAIRS]

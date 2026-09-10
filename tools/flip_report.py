@@ -32,27 +32,30 @@ import os
 
 TOP_N = 5      # Section 5.3 reports the share the five largest tasks carry
 
-# Large-model stage progressions, per README.md's "Large" table: each
-# family's gradual (1->2, 2->3) transitions plus the direct 1->3 jump.
-# kimik27 and both qwen3coder models are supplementary (coding-specialized,
-# not a generational stage) and excluded here, same as everywhere else -
-# see README.md's "Supplementary" table.
+# Flagship stage progressions, per README.md's "Large" table: each family's
+# gradual (1->2, 2->3) transitions plus the direct 1->3 jump. A transition
+# whose endpoint is a coding-specialized checkpoint (Kimi K2.7 Code at
+# Moonshot stage 3, Qwen3-Coder-480B at Qwen stage 2) is a specialization
+# comparison, not a version step: it is handled in SIBLING_PAIRS and omitted
+# here, so those families contribute fewer than three version pairs.
 STAGE_PAIRS = [
-    ('minimaxm2', 'minimaxm25'), ('minimaxm25', 'minimaxm3'), ('minimaxm2', 'minimaxm3'),
-    ('kimik2think', 'kimik25'), ('kimik25', 'kimik3'), ('kimik2think', 'kimik3'),
-    ('glm45', 'glm47'), ('glm47', 'glm53'), ('glm45', 'glm53'),
+    ('minimaxm21', 'minimaxm25'), ('minimaxm25', 'minimaxm3'), ('minimaxm21', 'minimaxm3'),
+    ('kimik2think', 'kimik25'),
+    ('glm45', 'glm47'), ('glm47', 'glm52'), ('glm45', 'glm52'),
     ('deepseekv3', 'deepseekv32'), ('deepseekv32', 'deepseekv4pro'), ('deepseekv3', 'deepseekv4pro'),
-    ('qwen3235b', 'qwen35397b'), ('qwen35397b', 'qwen38'), ('qwen3235b', 'qwen38'),
+    ('qwen3235b', 'qwen35397b'),
 ]
-# Small-vs-large size-matched sibling pairs at the same stage, per README.md's
-# "Small" table ("every small model sibling against its own big brother").
+# Same-stage flagship-vs-compact size pairs, per README.md's "Small" table
+# ("every small model sibling against its own big brother"). The coding
+# checkpoints pair with the general-purpose checkpoint of the same size and
+# organization closest to them, testing whether a code model is at least as
+# secure as the general one beside it.
 SIBLING_PAIRS = [
     ('qwen330b', 'qwen3235b'),
+    ('qwen3coder30b', 'qwen3coder480b'),
     ('qwen3527b', 'qwen35397b'),
-    ('qwen3827b', 'qwen38'),
     ('deepseekv4flash', 'deepseekv4pro'),
     ('glm47flash', 'glm47'),
-    ('glm53flash', 'glm53'),
 ]
 # old-generation proprietary baselines (CWEval paper Table I) against this
 # study's frontier proprietary models, same generational-stage idea as

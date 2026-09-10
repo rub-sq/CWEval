@@ -39,23 +39,22 @@ for _mod in ['fire', 'numpy', 'natsort', 'psutil']:
 
 from cweval.commons import get_code_blocks, strip_reasoning, select_code_block
 
-# every open-weight model of README.md, trajectory stages and supplementary
-# checkpoints alike - matches passk_report.py and breakdown_report.py, all
-# fully evaluated and included in the coverage/flakiness/threshold reports.
+# every open-weight model of README.md - matches passk_report.py and
+# breakdown_report.py, all fully evaluated and included in the
+# coverage/flakiness/threshold reports.
 OPENWEIGHT = {
-    'minimaxm2', 'minimaxm25', 'minimaxm3',
-    'kimik2think', 'kimik25', 'kimik27', 'kimik3',
-    'glm45', 'glm47', 'glm53', 'glm53flash',
-    'deepseekv3', 'deepseekv32', 'deepseekv4pro',
-    'qwen3235b', 'qwen3coder480b', 'qwen3coder30b', 'qwen35397b', 'qwen38', 'qwen3827b',
-    'qwen330b', 'qwen3527b',
-    'deepseekv4flash', 'glm47flash',
+    'minimaxm21', 'minimaxm25', 'minimaxm3',
+    'kimik2think', 'kimik25', 'kimik27',
+    'glm45', 'glm47', 'glm47flash', 'glm52',
+    'deepseekv3', 'deepseekv32', 'deepseekv4pro', 'deepseekv4flash',
+    'qwen3235b', 'qwen330b', 'qwen3coder480b', 'qwen3coder30b',
+    'qwen35397b', 'qwen3527b',
 }
 MODELS = sorted(OPENWEIGHT) + [
     'gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash',
 ]
 CURRENT_GEN = ['gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash',
-               'glm53', 'kimik3', 'minimaxm3']
+               'glm52', 'kimik27', 'minimaxm3']
 RUN_B = 'evals/_run_B_2026-08-06'
 OUT_DIR = 'evals/data_basis'
 
