@@ -181,20 +181,18 @@ class OpenRouterBatch:
         # "openrouter/anthropic/claude-haiku-4.5"); OpenRouter's own API wants
         # its native slug without that prefix ("anthropic/claude-haiku-4.5").
         model = model[len('openrouter/') :] if model.startswith('openrouter/') else model
-        # OpenRouter catalogs the batch-discounted rate as a DISTINCT model id
-        # (e.g. "anthropic/claude-haiku-4.5:batch", "google/gemini-3.7-flash:batch"
-        # - both confirmed as real, separately-priced catalog entries via
-        # openrouter.ai/<slug>:batch). Append the suffix so this actually gets
-        # billed at that rate.
-        # CAVEAT (2026-08-28 live failure): openai/gpt-5.6-sol:batch and
-        # openai/gpt-5.6-luna:batch return "does not have a :batch endpoint"
-        # on submit even though the :batch page exists (unlike the working
-        # examples above, it renders with no pricing shown) - this looks like
-        # a real per-model gap in provider availability for the batch variant
-        # specifically, confirmed by checking the live provider list on
-        # openrouter.ai directly, not a bug in this suffix convention itself.
-        # See submit() below for how that failure surfaces.
-        self.model = model if model.endswith(':batch') else f'{model}:batch'
+        # CORRECTED (2026-09-12): OpenRouter's own documented example payload
+        # (openrouter.ai/docs/batch-quickstart) uses the plain model slug with
+        # NO ":batch" suffix in the request body - the discounted pricing is
+        # selected by hitting the batch submission endpoint itself
+        # (POST /api/beta/batches), not by a special model id. The
+        # ":batch"-suffixed catalog entries (e.g. "openai/gpt-5:batch") exist
+        # only as separate pricing-page listings; sending that literal string
+        # as the `model` field is what produced every "does not have a
+        # :batch endpoint" failure so far (sol, luna, and gpt-5 all failed
+        # identically) - it was never a per-model provider gap. Strip any
+        # ":batch" suffix a caller might still pass in, rather than adding one.
+        self.model = model[: -len(':batch')] if model.endswith(':batch') else model
         self.api_key = os.environ['OPENROUTER_API_KEY']
         self.ai_kwargs = ai_kwargs
 
@@ -233,19 +231,17 @@ class OpenRouterBatch:
             # the specific reason behind a 402) - surface it instead of just the
             # bare status code.
             if 'does not have a :batch endpoint' in resp.text:
-                # Not every model actually has a working :batch route on
-                # OpenRouter, even if its catalog entry appears to (this has
-                # been observed to return a real batch id that fails later
-                # instead of rejecting immediately, for the same model, on a
-                # different attempt) - this is a structural per-model
-                # limitation, not a transient error worth retrying. Caller
-                # should fall back to synchronous mode (Gener with batch=False)
-                # for this model instead.
+                # Historically this was misdiagnosed as a per-model provider
+                # gap. Root cause (2026-09-12): a ":batch"-suffixed model id
+                # was being sent in the request body itself; that suffix is
+                # only a pricing-page catalog convention, not a value the
+                # submission API accepts. self.model no longer carries the
+                # suffix (see __init__), so seeing this again means something
+                # else changed - print resp.text and check the payload shape
+                # against openrouter.ai/docs/batch-quickstart before assuming
+                # the model is unsupported.
                 raise RuntimeError(
-                    f"Batch submit failed: {self.model} does not have a working "
-                    f":batch endpoint on OpenRouter - use synchronous mode "
-                    f"(generate.py without --batch True) for this model instead "
-                    f"of retrying batch submission. Raw response: {resp.text}"
+                    f"Batch submit failed for {self.model}: {resp.text}"
                 )
             raise RuntimeError(
                 f'Batch submit failed: {resp.status_code} {resp.reason} - {resp.text}'
