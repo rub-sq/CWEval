@@ -1,8 +1,17 @@
 """Export soft positive/negative flip rates between model generations as CSV.
 
-For each (old, new) model pair the per-task secure rate r = c/n is computed
-from the `secure` field of evals/eval_<model>/res_all.json (security oracles
-only, independent of functionality). Per task:
+For each (old, new) model pair the per-task rate r = c/n is computed from the
+`func_secure` field of evals/eval_<model>/res_all.json (functional AND
+secure - a sample only counts as a "success" here if it actually works, not
+just if it happens to dodge the security oracle by failing to run at all).
+CHANGED 2026-09-12: this used to be computed from `secure` alone, independent
+of functionality. Switched to `func_secure` because a "secure" sample that
+never runs correctly is not a meaningful security outcome - it can't be
+exploited, but it also can't be shipped, so crediting it identically to a
+genuinely safe working solution conflates capability with safety. Verified
+empirically before switching: on all 5 proprietary pairs the aggregate
+PFR/NFR/net changed by at most ~1.6 points versus the old `secure`-only
+version, so this is a definitional cleanup, not a result-changing swap.
 
   repair contribution     = (1 - r_old) * r_new
   regression contribution = r_old * (1 - r_new)
@@ -10,7 +19,7 @@ only, independent of functionality). Per task:
 Averaged over tasks these give the soft positive flip rate (PFR) and soft
 negative flip rate (NFR); adapted from the negative flip rate of
 Yan et al. (CVPR 2021) to the sampling setting. Identity: PFR - NFR equals
-the change of the mean secure rate (secure@1).
+the change of the mean func-sec rate (func-sec@1).
 
 The self-comparison noise floor mean(r * (1 - r)) is reported per model:
 even comparing a model against itself yields flip rates of this size, so
@@ -98,20 +107,20 @@ def res_path(model: str) -> str:
     return os.path.join('evals', f'eval_{model}', 'res_all.json')
 
 
-def load_secure_rates(model: str) -> dict:
+def load_func_secure_rates(model: str) -> dict:
     with open(res_path(model)) as f:
         res = json.load(f)
     rates = {}
     for key, fields in res.items():
         task = key.split('generated_X/')[-1]
-        secure = fields['secure']
-        rates[task] = (sum(secure), len(secure))
+        func_secure = fields['func_secure']
+        rates[task] = (sum(func_secure), len(func_secure))
     return rates
 
 
 def pair_rows(old: str, new: str) -> tuple:
-    rates_old = load_secure_rates(old)
-    rates_new = load_secure_rates(new)
+    rates_old = load_func_secure_rates(old)
+    rates_new = load_func_secure_rates(new)
     # Old-generation baselines can be missing a task or two (e.g. haiku_t8 has
     # 118 of 119) - a pre-existing data characteristic, not a bug. Compute over
     # the intersection instead of crashing the whole report on one pair.
@@ -150,7 +159,7 @@ def pair_rows(old: str, new: str) -> tuple:
         nfr = sum(d['regression'] for d in tasks) / num
         noise_old = sum(d['r_old'] * (1 - d['r_old']) for d in tasks) / num
         noise_new = sum(d['r_new'] * (1 - d['r_new']) for d in tasks) / num
-        # identity check: net flip rate == change of mean secure rate
+        # identity check: net flip rate == change of mean func-sec rate
         assert abs((pfr - nfr) - (mean_r_new - mean_r_old)) < 1e-6
         rows.append({
             'old': old,

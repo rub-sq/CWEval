@@ -34,7 +34,7 @@ from natsort import natsorted
 from p_tqdm import p_map
 from tqdm import tqdm
 
-from cweval.ai import AIAPI, BatchState, OpenRouterBatch
+from cweval.ai import AIAPI, BatchState, OpenAIBatch, OpenRouterBatch
 from cweval.commons import BENCHMARK_DIR, LANGS
 from cweval.ppt import make_prompt
 
@@ -65,6 +65,16 @@ class Gener:
         # provider fine synchronously; this bypasses litellm entirely and
         # only knows OpenRouter's batch endpoint).
         batch: bool = False,
+        # When True (only meaningful together with batch=True), submits via
+        # OpenAIBatch (real, first-party OpenAI Batch API) instead of
+        # OpenRouterBatch - OpenRouter's batch endpoint currently rejects
+        # every OpenAI-family model (see ai.py's OpenAIBatch docstring).
+        # OpenRouter batch remains the default and still works for every
+        # other provider (Anthropic, Google, ...) - this only swaps which
+        # client is used, for this one call, when explicitly asked for.
+        # Needs OPENAI_API_KEY in the environment; OPENROUTER_API_KEY is not
+        # touched by this path at all.
+        openai_direct: bool = False,
         # skips the "already exists, continue?" prompt below (used by
         # run_models.sh instead of piping 'y' into stdin)
         assume_yes: bool = False,
@@ -88,6 +98,7 @@ class Gener:
         self.ppt = ppt
         self.num_proc = num_proc
         self.batch = batch
+        self.openai_direct = openai_direct
         self.assume_yes = assume_yes
         self.langs = langs
         self.exclude_path = exclude_path
@@ -247,6 +258,9 @@ class Gener:
 
     def _gen_batch(self) -> None:
         # python cweval/generate.py gen --batch True --model openrouter/... --eval_path evals/eval_X
+        # add --openai_direct True to submit via OpenAI's own Batch API
+        # instead of OpenRouter's (needs OPENAI_API_KEY; see ai.py's
+        # OpenAIBatch docstring for why this exists).
         prompt = make_prompt(self.ppt)
         num_samples = self.ai_kwargs.get('n', 1)
 
@@ -278,13 +292,17 @@ class Gener:
             return
 
         state = BatchState(os.path.join(self.eval_path, '.batch_state.json'))
-        batcher = OpenRouterBatch(self.model, **self.ai_kwargs)
+        if self.openai_direct:
+            batcher_cls, label = OpenAIBatch, 'OpenAI'
+        else:
+            batcher_cls, label = OpenRouterBatch, 'OpenRouter'
+        batcher = batcher_cls(self.model, **self.ai_kwargs)
 
         if state.exists():
             print(f'Resuming batch tracked in {state.path}', flush=True)
             batch_id, targets = state.load()
         else:
-            print(f'Submitting {len(entries)} requests as one OpenRouter batch...', flush=True)
+            print(f'Submitting {len(entries)} requests as one {label} batch...', flush=True)
             batch_id = batcher.submit(entries)
             state.save(batch_id, targets)
             print(f'Submitted. batch_id={batch_id} (tracked in {state.path})', flush=True)
@@ -308,7 +326,7 @@ class Gener:
             # submitting a wasteful duplicate.
             state.clear()
             raise
-        results = OpenRouterBatch.parse_results(final)
+        results = batcher_cls.parse_results(final)
 
         written = failed = 0
         for cid, target in targets.items():

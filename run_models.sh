@@ -22,11 +22,25 @@
 #                                           # FORCE_PROVIDER below - not confirmed to
 #                                           # work the same way for BATCH_MODE=1, test
 #                                           # small first)
+#   BATCH_PROVIDER=openai BATCH_MODE=1 bash run_models.sh gpt5...  # only meaningful
+#                                           # together with BATCH_MODE=1. Submits via
+#                                           # OpenAI's own, first-party Batch API
+#                                           # instead of OpenRouter's - OpenRouter's
+#                                           # batch endpoint currently rejects every
+#                                           # OpenAI-family model outright (confirmed,
+#                                           # see cweval/ai.py's OpenAIBatch
+#                                           # docstring). Needs OPENAI_API_KEY
+#                                           # exported too. Default is "openrouter"
+#                                           # (unchanged, still works for every other
+#                                           # provider, and is still selectable for
+#                                           # OpenAI models too if you want to keep
+#                                           # trying it).
 #
 # Model names: gpt56sol  gpt56luna  haiku45  gemini31pro  gemini37flash
 #
 # Prerequisites:
 #   export OPENROUTER_API_KEY="sk-or-..."
+#   export OPENAI_API_KEY="sk-..."   # only needed if using BATCH_PROVIDER=openai
 #   source .env
 
 set -uo pipefail
@@ -55,6 +69,21 @@ NUM_PROC="${NUM_PROC:-8}"
 # See openrouter.ai/docs/guides/best-practices/reasoning-tokens.
 REASONING_MAX_TOKENS="${REASONING_MAX_TOKENS:-2048}"
 BATCH_MODE="${BATCH_MODE:-0}"
+# "openrouter" (default, unchanged) or "openai" - only consulted when
+# BATCH_MODE=1. "openai" submits via OpenAI's own Batch API directly
+# (cweval/ai.py's OpenAIBatch) instead of OpenRouter's, for the specific
+# reason documented in the BATCH_PROVIDER usage line above. Needs
+# OPENAI_API_KEY exported when used; OPENROUTER_API_KEY stays required
+# regardless (other models/paths still depend on it).
+BATCH_PROVIDER="${BATCH_PROVIDER:-openrouter}"
+if [[ "$BATCH_PROVIDER" != "openrouter" && "$BATCH_PROVIDER" != "openai" ]]; then
+    echo "BATCH_PROVIDER must be 'openrouter' or 'openai', got '$BATCH_PROVIDER'" >&2
+    exit 1
+fi
+if [[ "$BATCH_PROVIDER" = "openai" ]]; then
+    : "${OPENAI_API_KEY:?BATCH_PROVIDER=openai needs OPENAI_API_KEY exported}"
+    export OPENAI_API_KEY
+fi
 # Pin a specific upstream provider (e.g. "openai") instead of letting
 # OpenRouter auto-route/fall back - useful when only one provider actually
 # offers the pricing (e.g. a batch discount) you're relying on. Empty by
@@ -172,8 +201,13 @@ PYEOF
 
     local batch_args=()
     if [[ "$BATCH_MODE" = "1" ]]; then
-        echo "  -> batch mode: submitting as one OpenRouter batch (can take up to 24h)"
-        batch_args=(--batch True)
+        if [[ "$BATCH_PROVIDER" = "openai" ]]; then
+            echo "  -> batch mode: submitting as one OpenAI batch directly (can take up to 24h)"
+            batch_args=(--batch True --openai_direct True)
+        else
+            echo "  -> batch mode: submitting as one OpenRouter batch (can take up to 24h)"
+            batch_args=(--batch True)
+        fi
     fi
 
     # --assume_yes skips generate.py's "already exists, continue?" prompt

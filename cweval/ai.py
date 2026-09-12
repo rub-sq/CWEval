@@ -369,6 +369,203 @@ class OpenRouterBatch:
         return out
 
 
+class OpenAIBatch:
+    """Direct OpenAI Batch API client - bypasses OpenRouter entirely.
+
+    WHY THIS EXISTS (2026-09-12): OpenRouter's batch endpoint rejects every
+    OpenAI-family model tested so far (gpt-5, gpt-5-mini, and previously
+    gpt-5.6-sol/gpt-5.6-luna) with "does not have a :batch endpoint" - this
+    was chased down at length and is NOT a bug in how we call OpenRouter
+    (confirmed against OpenRouter's own documented example, which fails
+    identically). It looks like OpenRouter's batch pass-through simply isn't
+    wired up for OpenAI yet - OpenAI's real Batch API works nothing like
+    Anthropic's/Google's (inline JSON array): it requires uploading a JSONL
+    *file*, creating a batch that references that file's id, and downloading
+    a separate output file once done. This class talks to that real,
+    first-party API directly for OpenAI models specifically, while
+    OpenRouterBatch (above) remains untouched and still the path for every
+    other provider - and still usable for OpenAI models too, if OpenRouter
+    ever fixes this; nothing here removes that option.
+
+    Returns the exact same per-sample shape as OpenRouterBatch.parse_results
+    (custom_id -> {content, usage, error}), so generate.py's _gen_batch
+    doesn't need to know or care which of the two it's using.
+    """
+
+    BASE_URL = 'https://api.openai.com/v1'
+    POLL_INTERVAL_S = 30
+    MAX_WAIT_S = 26 * 3600
+    SUBMIT_TIMEOUT_S = 120
+    SUBMIT_MAX_ATTEMPTS = 4
+    SUBMIT_BACKOFF_S = 20
+
+    def __init__(self, model: str, **ai_kwargs) -> None:
+        # generate.py is invoked the same way as for the OpenRouter path
+        # (--model openrouter/openai/<slug>, since that's litellm's routing
+        # convention used everywhere else in this codebase) - strip both
+        # litellm's "openrouter/" prefix and OpenRouter's "openai/" catalog
+        # prefix, since OpenAI's own API wants the bare model id ("gpt-5",
+        # not "openai/gpt-5" or "openrouter/openai/gpt-5").
+        for prefix in ('openrouter/', 'openai/'):
+            if model.startswith(prefix):
+                model = model[len(prefix):]
+        self.model = model
+        self.api_key = os.environ['OPENAI_API_KEY']
+        self.ai_kwargs = ai_kwargs
+
+    def _headers(self, content_type: str = None) -> Dict[str, str]:
+        h = {'Authorization': f'Bearer {self.api_key}'}
+        if content_type:
+            h['Content-Type'] = content_type
+        return h
+
+    def _request_body(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
+        # mirrors OpenRouterBatch._request_body above - same field mapping,
+        # same reasoning for each one.
+        body: Dict[str, Any] = {'model': self.model, 'messages': messages}
+        if 'temperature' in self.ai_kwargs:
+            body['temperature'] = self.ai_kwargs['temperature']
+        if 'max_completion_tokens' in self.ai_kwargs:
+            body['max_tokens'] = self.ai_kwargs['max_completion_tokens']
+        extra_body = self.ai_kwargs.get('extra_body')
+        if extra_body:
+            body.update(extra_body)
+        return body
+
+    def _upload_input_file(self, entries: List[Tuple[str, List[Dict[str, str]]]]) -> str:
+        lines = [
+            json.dumps({
+                'custom_id': cid,
+                'method': 'POST',
+                'url': '/v1/chat/completions',
+                'body': self._request_body(msgs),
+            })
+            for cid, msgs in entries
+        ]
+        jsonl = '\n'.join(lines).encode('utf-8')
+        resp = requests.post(
+            f'{self.BASE_URL}/files',
+            headers=self._headers(),
+            files={'file': ('batch_input.jsonl', jsonl, 'application/jsonl')},
+            data={'purpose': 'batch'},
+            timeout=self.SUBMIT_TIMEOUT_S,
+        )
+        if not resp.ok:
+            raise RuntimeError(f'OpenAI batch input file upload failed: '
+                                f'{resp.status_code} {resp.text}')
+        return resp.json()['id']
+
+    def submit(self, entries: List[Tuple[str, List[Dict[str, str]]]]) -> str:
+        """entries: list of (custom_id, messages). Returns the batch id."""
+        input_file_id = self._upload_input_file(entries)
+        payload = {
+            'input_file_id': input_file_id,
+            'endpoint': '/v1/chat/completions',
+            'completion_window': '24h',
+        }
+        backoff = self.SUBMIT_BACKOFF_S
+        for attempt in range(1, self.SUBMIT_MAX_ATTEMPTS + 1):
+            try:
+                resp = requests.post(
+                    f'{self.BASE_URL}/batches',
+                    headers=self._headers('application/json'),
+                    json=payload, timeout=self.SUBMIT_TIMEOUT_S,
+                )
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                if attempt == self.SUBMIT_MAX_ATTEMPTS:
+                    raise RuntimeError(
+                        f'OpenAI batch create failed after {attempt} attempts: {e}'
+                    ) from e
+                print(f'  batch create attempt {attempt} failed '
+                      f'({e.__class__.__name__}), retrying in {backoff}s...')
+                time.sleep(backoff)
+                backoff *= 2
+                continue
+            if resp.ok:
+                return resp.json()['id']
+            if 500 <= resp.status_code < 600 and attempt < self.SUBMIT_MAX_ATTEMPTS:
+                print(f'  batch create attempt {attempt} got {resp.status_code}, '
+                      f'retrying in {backoff}s...')
+                time.sleep(backoff)
+                backoff *= 2
+                continue
+            raise RuntimeError(f'OpenAI batch create failed: {resp.status_code} {resp.text}')
+        raise RuntimeError('OpenAI batch create failed: exhausted retries without a definitive result')
+
+    def get_status(self, batch_id: str) -> Dict[str, Any]:
+        resp = requests.get(f'{self.BASE_URL}/batches/{batch_id}',
+                             headers=self._headers(), timeout=60)
+        resp.raise_for_status()
+        return resp.json()
+
+    NOT_FOUND_GRACE_S = 300
+    INITIAL_DELAY_S = 10
+
+    def poll_until_done(self, batch_id: str, on_tick=None) -> Dict[str, Any]:
+        """Same polling contract as OpenRouterBatch.poll_until_done, but on
+        reaching 'completed' it additionally downloads the output (and
+        error) file content, since OpenAI's batch object only carries file
+        ids, never inline results."""
+        start = time.time()
+        time.sleep(self.INITIAL_DELAY_S)
+        while True:
+            try:
+                data = self.get_status(batch_id)
+            except requests.exceptions.HTTPError as e:
+                not_found = e.response is not None and e.response.status_code == 404
+                if not_found and time.time() - start < self.NOT_FOUND_GRACE_S:
+                    if on_tick:
+                        on_tick('not_found_yet', {})
+                    time.sleep(self.POLL_INTERVAL_S)
+                    continue
+                raise
+            status = data.get('status')
+            if on_tick:
+                on_tick(status, data)
+            if status == 'completed':
+                return self._download_results(data)
+            if status in ('failed', 'expired', 'cancelled'):
+                raise RuntimeError(f'Batch {batch_id} ended with status={status}: {data}')
+            if time.time() - start > self.MAX_WAIT_S:
+                raise TimeoutError(
+                    f'Batch {batch_id} still "{status}" after {self.MAX_WAIT_S}s - '
+                    f'past the documented 24h window; check it manually.'
+                )
+            time.sleep(self.POLL_INTERVAL_S)
+
+    def _download_results(self, final_status: Dict[str, Any]) -> Dict[str, Any]:
+        rows: List[Dict[str, Any]] = []
+        output_file_id = final_status.get('output_file_id')
+        if output_file_id:
+            resp = requests.get(f'{self.BASE_URL}/files/{output_file_id}/content',
+                                 headers=self._headers(), timeout=120)
+            resp.raise_for_status()
+            rows += [json.loads(line) for line in resp.text.splitlines() if line.strip()]
+        # error_file_id holds requests OpenAI rejected outright (bad params,
+        # etc.) - surface those as errored rows too, so they show up in
+        # generate.py's `failed` count instead of silently vanishing.
+        error_file_id = final_status.get('error_file_id')
+        if error_file_id:
+            resp = requests.get(f'{self.BASE_URL}/files/{error_file_id}/content',
+                                 headers=self._headers(), timeout=120)
+            resp.raise_for_status()
+            for line in resp.text.splitlines():
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                row.setdefault('error', row.get('response') or 'unknown error')
+                rows.append(row)
+        return {'results': rows}
+
+    @staticmethod
+    def parse_results(batch_response: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+        # OpenAI's real per-line output shape ({"custom_id", "response":
+        # {"body": {...chat completion...}}, "error"}) is exactly what
+        # OpenRouterBatch.parse_results already handles - reuse it rather
+        # than duplicate the same parsing logic.
+        return OpenRouterBatch.parse_results(batch_response)
+
+
 class BatchState:
     """Persists {batch_id, custom_id -> target} to a file next to the eval
     output so a killed/disconnected process (real risk at up to 24h) can
