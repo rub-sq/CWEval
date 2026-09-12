@@ -181,17 +181,11 @@ class OpenRouterBatch:
         # "openrouter/anthropic/claude-haiku-4.5"); OpenRouter's own API wants
         # its native slug without that prefix ("anthropic/claude-haiku-4.5").
         model = model[len('openrouter/') :] if model.startswith('openrouter/') else model
-        # CORRECTED (2026-09-12): OpenRouter's own documented example payload
-        # (openrouter.ai/docs/batch-quickstart) uses the plain model slug with
-        # NO ":batch" suffix in the request body - the discounted pricing is
-        # selected by hitting the batch submission endpoint itself
-        # (POST /api/beta/batches), not by a special model id. The
-        # ":batch"-suffixed catalog entries (e.g. "openai/gpt-5:batch") exist
-        # only as separate pricing-page listings; sending that literal string
-        # as the `model` field is what produced every "does not have a
-        # :batch endpoint" failure so far (sol, luna, and gpt-5 all failed
-        # identically) - it was never a per-model provider gap. Strip any
-        # ":batch" suffix a caller might still pass in, rather than adding one.
+        # OpenRouter's batch submission endpoint (POST /api/beta/batches)
+        # wants the plain model slug with no ":batch" suffix - that suffix
+        # only exists as a separate pricing-page catalog listing, not a
+        # value the API accepts in the `model` field. Strip it if a caller
+        # passes one in, rather than adding one.
         self.model = model[: -len(':batch')] if model.endswith(':batch') else model
         self.api_key = os.environ['OPENROUTER_API_KEY']
         self.ai_kwargs = ai_kwargs
@@ -217,14 +211,12 @@ class OpenRouterBatch:
         return body
 
     # Transient-failure retry knobs for submit() below. OpenRouter's batch
-    # endpoint has been observed to intermittently return a bare Cloudflare
-    # 502 page or simply not respond within a normal window (a clean
-    # ReadTimeout at exactly SUBMIT_TIMEOUT_S, not an actual hang - confirmed
-    # 2026-09-12 by letting one run to completion instead of Ctrl+C'ing it
-    # early) - both look like transient infra flakiness on their side, worth
-    # retrying automatically. A 402 (balance) or the :batch-endpoint error are
-    # NOT retried here: those are permanent for the current request and a
-    # retry would just burn the same wait for the same outcome.
+    # endpoint can intermittently return a bare Cloudflare 502 page or not
+    # respond within SUBMIT_TIMEOUT_S - both look like transient infra
+    # flakiness worth retrying automatically. A 402 (balance) or the
+    # :batch-endpoint error are NOT retried: those are permanent for the
+    # current request and a retry would just burn the same wait for the
+    # same outcome.
     SUBMIT_TIMEOUT_S = 120
     SUBMIT_MAX_ATTEMPTS = 4
     SUBMIT_BACKOFF_S = 20  # doubles each attempt: 20, 40, 80
@@ -265,14 +257,10 @@ class OpenRouterBatch:
             # the specific reason behind a 402) - surface it instead of just the
             # bare status code.
             if 'does not have a :batch endpoint' in resp.text:
-                # Historically this was misdiagnosed as a per-model provider
-                # gap. Root cause (2026-09-12): a ":batch"-suffixed model id
-                # was being sent in the request body itself; that suffix is
-                # only a pricing-page catalog convention, not a value the
-                # submission API accepts. self.model no longer carries the
-                # suffix (see __init__), so seeing this again means something
-                # else changed - print resp.text and check the payload shape
-                # against openrouter.ai/docs/batch-quickstart before assuming
+                # self.model never carries a ":batch" suffix (see __init__),
+                # so this means something in the request shape itself is
+                # wrong - check resp.text and the payload against
+                # openrouter.ai/docs/batch-quickstart rather than assuming
                 # the model is unsupported.
                 raise RuntimeError(
                     f"Batch submit failed for {self.model}: {resp.text}"
@@ -372,20 +360,16 @@ class OpenRouterBatch:
 class OpenAIBatch:
     """Direct OpenAI Batch API client - bypasses OpenRouter entirely.
 
-    WHY THIS EXISTS (2026-09-12): OpenRouter's batch endpoint rejects every
-    OpenAI-family model tested so far (gpt-5, gpt-5-mini, and previously
-    gpt-5.6-sol/gpt-5.6-luna) with "does not have a :batch endpoint" - this
-    was chased down at length and is NOT a bug in how we call OpenRouter
-    (confirmed against OpenRouter's own documented example, which fails
-    identically). It looks like OpenRouter's batch pass-through simply isn't
-    wired up for OpenAI yet - OpenAI's real Batch API works nothing like
-    Anthropic's/Google's (inline JSON array): it requires uploading a JSONL
-    *file*, creating a batch that references that file's id, and downloading
-    a separate output file once done. This class talks to that real,
-    first-party API directly for OpenAI models specifically, while
-    OpenRouterBatch (above) remains untouched and still the path for every
-    other provider - and still usable for OpenAI models too, if OpenRouter
-    ever fixes this; nothing here removes that option.
+    OpenRouter's batch endpoint rejects every OpenAI-family model with "does
+    not have a :batch endpoint" - a real gap in OpenRouter's batch
+    pass-through for this provider, not something fixable from the caller
+    side. OpenAI's real Batch API works nothing like Anthropic's/Google's
+    (inline JSON array): it requires uploading a JSONL *file*, creating a
+    batch that references that file's id, and downloading a separate output
+    file once done. This class talks to that API directly for OpenAI
+    models, while OpenRouterBatch (above) stays the path for every other
+    provider - and remains usable for OpenAI models too, nothing here
+    removes that option.
 
     Returns the exact same per-sample shape as OpenRouterBatch.parse_results
     (custom_id -> {content, usage, error}), so generate.py's _gen_batch
@@ -413,8 +397,7 @@ class OpenAIBatch:
         self.api_key = os.environ['OPENAI_API_KEY']
         self.ai_kwargs = ai_kwargs
         # warn about dropped OpenRouter-only extra_body keys exactly once
-        # here (not inside _request_body, which runs once per sample - that
-        # used to print the identical line 119 times, once per request).
+        # here, not inside _request_body (which runs once per sample).
         extra_body = ai_kwargs.get('extra_body')
         if extra_body:
             dropped = {k: v for k, v in extra_body.items()
@@ -434,36 +417,26 @@ class OpenAIBatch:
     # 'reasoning' (OpenRouter's {"max_tokens": N} token-budget dict - OpenAI's
     # real equivalent is a string `reasoning_effort`, a different unit
     # entirely, not a drop-in rename) and 'provider' (OpenRouter's
-    # multi-provider routing control - meaningless once you're calling
-    # OpenAI directly, there's no routing to control). CONFIRMED live
-    # (2026-09-13): sending 'reasoning' verbatim here 400s every single
-    # request in the batch with "Unknown parameter: 'reasoning'".
+    # multi-provider routing control - meaningless once calling OpenAI
+    # directly, there's no routing to control).
     _OPENROUTER_ONLY_EXTRA_BODY_KEYS = ('reasoning', 'provider')
 
     def _request_body(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
-        # mirrors OpenRouterBatch._request_body above. temperature is always
-        # forwarded when given - fixed at 0.8 across every model in this
-        # study is a non-negotiable experimental control, not a per-model
-        # choice this code gets to make. (An earlier version of this method
-        # dropped it here based on OpenRouter's /v1/models metadata listing
-        # no "temperature" in openai/gpt-5's supported_parameters - that was
-        # inference, not a confirmed rejection like 'reasoning' got below,
-        # and it should never have overridden a fixed experimental
-        # parameter on that basis. Reverted. If OpenAI's real API does
-        # reject it, that will surface as an explicit per-request error in
-        # the batch's error file, the same way 'reasoning' did - a genuine
-        # model constraint to surface and decide on, not something to work
-        # around silently.)
+        # temperature is a fixed experimental control (0.8 across every
+        # model in this study) - always forwarded when given, never dropped
+        # or substituted by this code.
         body: Dict[str, Any] = {'model': self.model, 'messages': messages}
         if 'temperature' in self.ai_kwargs:
             body['temperature'] = self.ai_kwargs['temperature']
         if 'max_completion_tokens' in self.ai_kwargs:
-            body['max_tokens'] = self.ai_kwargs['max_completion_tokens']
+            # unlike OpenRouterBatch (which renames this to `max_tokens`),
+            # OpenAI's own API for this model rejects `max_tokens` and wants
+            # `max_completion_tokens` as-is.
+            body['max_completion_tokens'] = self.ai_kwargs['max_completion_tokens']
         extra_body = self.ai_kwargs.get('extra_body')
         if extra_body:
-            # the drop-and-warn happened here once per __init__ already
-            # (same extra_body dict every call, no need to repeat per entry -
-            # this used to print once per sample, 119x, alarming and useless)
+            # the drop-and-warn for OpenRouter-only keys happens once in
+            # __init__, not per call here (this runs once per sample).
             body.update({k: v for k, v in extra_body.items()
                          if k not in self._OPENROUTER_ONLY_EXTRA_BODY_KEYS})
         return body
