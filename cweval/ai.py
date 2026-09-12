@@ -412,6 +412,16 @@ class OpenAIBatch:
         self.model = model
         self.api_key = os.environ['OPENAI_API_KEY']
         self.ai_kwargs = ai_kwargs
+        # warn about dropped OpenRouter-only extra_body keys exactly once
+        # here (not inside _request_body, which runs once per sample - that
+        # used to print the identical line 119 times, once per request).
+        extra_body = ai_kwargs.get('extra_body')
+        if extra_body:
+            dropped = {k: v for k, v in extra_body.items()
+                       if k in self._OPENROUTER_ONLY_EXTRA_BODY_KEYS}
+            if dropped:
+                print(f'  OpenAIBatch: dropping OpenRouter-only extra_body '
+                      f'key(s) not valid on the direct OpenAI API: {dropped}')
 
     def _headers(self, content_type: str = None) -> Dict[str, str]:
         h = {'Authorization': f'Bearer {self.api_key}'}
@@ -451,11 +461,9 @@ class OpenAIBatch:
             body['max_tokens'] = self.ai_kwargs['max_completion_tokens']
         extra_body = self.ai_kwargs.get('extra_body')
         if extra_body:
-            dropped = {k: v for k, v in extra_body.items()
-                       if k in self._OPENROUTER_ONLY_EXTRA_BODY_KEYS}
-            if dropped:
-                print(f'  OpenAIBatch: dropping OpenRouter-only extra_body '
-                      f'key(s) not valid on the direct OpenAI API: {dropped}')
+            # the drop-and-warn happened here once per __init__ already
+            # (same extra_body dict every call, no need to repeat per entry -
+            # this used to print once per sample, 119x, alarming and useless)
             body.update({k: v for k, v in extra_body.items()
                          if k not in self._OPENROUTER_ONLY_EXTRA_BODY_KEYS})
         return body
