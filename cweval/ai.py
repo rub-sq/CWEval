@@ -405,6 +405,10 @@ class OpenAIBatch:
             if dropped:
                 print(f'  OpenAIBatch: dropping OpenRouter-only extra_body '
                       f'key(s) not valid on the direct OpenAI API: {dropped}')
+        if self.model in self._NO_CUSTOM_TEMPERATURE_MODELS and 'temperature' in ai_kwargs:
+            print(f'  OpenAIBatch: {self.model} only accepts the default '
+                  f'temperature (1) - omitting temperature={ai_kwargs["temperature"]} '
+                  f'for this model only, every other model keeps it.')
 
     def _headers(self, content_type: str = None) -> Dict[str, str]:
         h = {'Authorization': f'Bearer {self.api_key}'}
@@ -421,12 +425,17 @@ class OpenAIBatch:
     # directly, there's no routing to control).
     _OPENROUTER_ONLY_EXTRA_BODY_KEYS = ('reasoning', 'provider')
 
+    # temperature is a fixed experimental control (0.8 across every model in
+    # this study) - forwarded as given for every model except these two,
+    # whose real OpenAI API rejects any value other than the default (1)
+    # with a hard 400 (confirmed live). This is the one, narrow, disclosed
+    # exception; every other model, including every other OpenAI model on
+    # this path, keeps the fixed value untouched.
+    _NO_CUSTOM_TEMPERATURE_MODELS = ('gpt-5', 'gpt-5-mini')
+
     def _request_body(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
-        # temperature is a fixed experimental control (0.8 across every
-        # model in this study) - always forwarded when given, never dropped
-        # or substituted by this code.
         body: Dict[str, Any] = {'model': self.model, 'messages': messages}
-        if 'temperature' in self.ai_kwargs:
+        if 'temperature' in self.ai_kwargs and self.model not in self._NO_CUSTOM_TEMPERATURE_MODELS:
             body['temperature'] = self.ai_kwargs['temperature']
         if 'max_completion_tokens' in self.ai_kwargs:
             # unlike OpenRouterBatch (which renames this to `max_tokens`),
