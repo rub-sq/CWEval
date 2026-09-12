@@ -419,9 +419,31 @@ class OpenAIBatch:
             h['Content-Type'] = content_type
         return h
 
+    # extra_body keys that only mean something in OpenRouter's unified
+    # request schema and are rejected outright by OpenAI's own API:
+    # 'reasoning' (OpenRouter's {"max_tokens": N} token-budget dict - OpenAI's
+    # real equivalent is a string `reasoning_effort`, a different unit
+    # entirely, not a drop-in rename) and 'provider' (OpenRouter's
+    # multi-provider routing control - meaningless once you're calling
+    # OpenAI directly, there's no routing to control). CONFIRMED live
+    # (2026-09-13): sending 'reasoning' verbatim here 400s every single
+    # request in the batch with "Unknown parameter: 'reasoning'".
+    _OPENROUTER_ONLY_EXTRA_BODY_KEYS = ('reasoning', 'provider')
+
     def _request_body(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
-        # mirrors OpenRouterBatch._request_body above - same field mapping,
-        # same reasoning for each one.
+        # mirrors OpenRouterBatch._request_body above. temperature is always
+        # forwarded when given - fixed at 0.8 across every model in this
+        # study is a non-negotiable experimental control, not a per-model
+        # choice this code gets to make. (An earlier version of this method
+        # dropped it here based on OpenRouter's /v1/models metadata listing
+        # no "temperature" in openai/gpt-5's supported_parameters - that was
+        # inference, not a confirmed rejection like 'reasoning' got below,
+        # and it should never have overridden a fixed experimental
+        # parameter on that basis. Reverted. If OpenAI's real API does
+        # reject it, that will surface as an explicit per-request error in
+        # the batch's error file, the same way 'reasoning' did - a genuine
+        # model constraint to surface and decide on, not something to work
+        # around silently.)
         body: Dict[str, Any] = {'model': self.model, 'messages': messages}
         if 'temperature' in self.ai_kwargs:
             body['temperature'] = self.ai_kwargs['temperature']
@@ -429,7 +451,13 @@ class OpenAIBatch:
             body['max_tokens'] = self.ai_kwargs['max_completion_tokens']
         extra_body = self.ai_kwargs.get('extra_body')
         if extra_body:
-            body.update(extra_body)
+            dropped = {k: v for k, v in extra_body.items()
+                       if k in self._OPENROUTER_ONLY_EXTRA_BODY_KEYS}
+            if dropped:
+                print(f'  OpenAIBatch: dropping OpenRouter-only extra_body '
+                      f'key(s) not valid on the direct OpenAI API: {dropped}')
+            body.update({k: v for k, v in extra_body.items()
+                         if k not in self._OPENROUTER_ONLY_EXTRA_BODY_KEYS})
         return body
 
     def _upload_input_file(self, entries: List[Tuple[str, List[Dict[str, str]]]]) -> str:
