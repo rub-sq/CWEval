@@ -25,11 +25,11 @@ FRONTIER = {'gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash'}
 # outside evals/ since they're historical reference data, not this study's
 # own runs. Real res_all.json, 100 samples/task, same as OPENWEIGHT.
 OLD_BASELINE = {
-    'gpt4o': '../eval_backups/original_paper/eval_4o_t8',
-    'gpt4omini': '../eval_backups/original_paper/eval_4omini_t8',
-    'haiku35': '../eval_backups/original_paper/eval_haiku_t8',
-    'gemini15pro': '../eval_backups/original_paper/eval_gpro_t8',
-    'gemini15flash': '../eval_backups/original_paper/eval_gflash_t8',
+    'gpt4o': '../results/original_paper/eval_4o_t8',
+    'gpt4omini': '../results/original_paper/eval_4omini_t8',
+    'haiku35': '../results/original_paper/eval_haiku_t8',
+    'gemini15pro': '../results/original_paper/eval_gpro_t8',
+    'gemini15flash': '../results/original_paper/eval_gflash_t8',
 }
 # every open-weight model of README.md, each evaluated at N=100 samples/task.
 OPENWEIGHT = {

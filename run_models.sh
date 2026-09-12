@@ -73,9 +73,12 @@ model_slug() {
     case "$1" in
         gpt56sol)      echo "openrouter/openai/gpt-5.6-sol" ;;
         gpt56luna)     echo "openrouter/openai/gpt-5.6-luna" ;;
-        haiku45)       echo "openrouter/anthropic/claude-haiku-4.5" ;;
+        gpt5)          echo "openrouter/openai/gpt-5" ;;
+        gpt5mini)      echo "openrouter/openai/gpt-5-mini" ;;
         gemini31pro)   echo "openrouter/google/gemini-3.1-pro-preview" ;;
-        gemini37flash) echo "openrouter/google/gemini-3.7-flash" ;;
+        gemini37flash)  echo "openrouter/google/gemini-3.7-flash" ;;
+        gemini25pro)   echo "openrouter/google/gemini-2.5-pro" ;;
+        gemini25flash)  echo "openrouter/google/gemini-2.5-flash" ;;
         *) return 1 ;;
     esac
 }

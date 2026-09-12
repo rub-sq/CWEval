@@ -34,11 +34,11 @@ FRONTIER_NEW = ['gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flas
 # old-generation proprietary baselines (CWEval paper Table I), same historical
 # reference data as passk_report.py's OLD_BASELINE.
 OLD_BASELINE = {
-    'gpt4o': '../eval_backups/original_paper/eval_4o_t8',
-    'gpt4omini': '../eval_backups/original_paper/eval_4omini_t8',
-    'haiku35': '../eval_backups/original_paper/eval_haiku_t8',
-    'gemini15pro': '../eval_backups/original_paper/eval_gpro_t8',
-    'gemini15flash': '../eval_backups/original_paper/eval_gflash_t8',
+    'gpt4o': '../results/original_paper/eval_4o_t8',
+    'gpt4omini': '../results/original_paper/eval_4omini_t8',
+    'haiku35': '../results/original_paper/eval_haiku_t8',
+    'gemini15pro': '../results/original_paper/eval_gpro_t8',
+    'gemini15flash': '../results/original_paper/eval_gflash_t8',
 }
 # every open-weight model of README.md - full language/CWE breakdown coverage.
 # CURRENT_GEN stays narrowly scoped to PAIRS' latest-stage entries - a
