@@ -216,6 +216,19 @@ class OpenRouterBatch:
             body.update(extra_body)  # e.g. {"reasoning": {"max_tokens": N}}
         return body
 
+    # Transient-failure retry knobs for submit() below. OpenRouter's batch
+    # endpoint has been observed to intermittently return a bare Cloudflare
+    # 502 page or simply not respond within a normal window (a clean
+    # ReadTimeout at exactly SUBMIT_TIMEOUT_S, not an actual hang - confirmed
+    # 2026-09-12 by letting one run to completion instead of Ctrl+C'ing it
+    # early) - both look like transient infra flakiness on their side, worth
+    # retrying automatically. A 402 (balance) or the :batch-endpoint error are
+    # NOT retried here: those are permanent for the current request and a
+    # retry would just burn the same wait for the same outcome.
+    SUBMIT_TIMEOUT_S = 120
+    SUBMIT_MAX_ATTEMPTS = 4
+    SUBMIT_BACKOFF_S = 20  # doubles each attempt: 20, 40, 80
+
     def submit(self, entries: List[Tuple[str, List[Dict[str, str]]]]) -> str:
         """entries: list of (custom_id, messages). Returns the batch id."""
         payload = {
@@ -225,8 +238,29 @@ class OpenRouterBatch:
                 {'custom_id': cid, 'body': self._request_body(msgs)} for cid, msgs in entries
             ],
         }
-        resp = requests.post(self.BASE_URL, headers=self._headers(), json=payload, timeout=120)
-        if not resp.ok:
+        backoff = self.SUBMIT_BACKOFF_S
+        for attempt in range(1, self.SUBMIT_MAX_ATTEMPTS + 1):
+            try:
+                resp = requests.post(
+                    self.BASE_URL, headers=self._headers(), json=payload,
+                    timeout=self.SUBMIT_TIMEOUT_S,
+                )
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                if attempt == self.SUBMIT_MAX_ATTEMPTS:
+                    raise RuntimeError(
+                        f'Batch submit failed after {attempt} attempts (network/timeout): {e}'
+                    ) from e
+                print(f'  batch submit attempt {attempt} failed ({e.__class__.__name__}), '
+                      f'retrying in {backoff}s...')
+                time.sleep(backoff)
+                backoff *= 2
+                continue
+            if resp.ok:
+                data = resp.json()
+                batch_id = data.get('id') or data.get('batch_id')
+                if not batch_id:
+                    raise RuntimeError(f'Batch submit response had no id field: {data}')
+                return batch_id
             # raise_for_status() alone drops OpenRouter's actual error body (e.g.
             # the specific reason behind a 402) - surface it instead of just the
             # bare status code.
@@ -243,14 +277,20 @@ class OpenRouterBatch:
                 raise RuntimeError(
                     f"Batch submit failed for {self.model}: {resp.text}"
                 )
+            # A raw HTML error body (e.g. a Cloudflare 502 page instead of
+            # JSON) is the same transient-infra symptom as the network
+            # exceptions above, just surfaced as a 5xx status instead of a
+            # socket error - retry it the same way.
+            if 500 <= resp.status_code < 600 and attempt < self.SUBMIT_MAX_ATTEMPTS:
+                print(f'  batch submit attempt {attempt} got {resp.status_code}, '
+                      f'retrying in {backoff}s...')
+                time.sleep(backoff)
+                backoff *= 2
+                continue
             raise RuntimeError(
                 f'Batch submit failed: {resp.status_code} {resp.reason} - {resp.text}'
             )
-        data = resp.json()
-        batch_id = data.get('id') or data.get('batch_id')
-        if not batch_id:
-            raise RuntimeError(f'Batch submit response had no id field: {data}')
-        return batch_id
+        raise RuntimeError('Batch submit failed: exhausted retries without a definitive result')
 
     def get_status(self, batch_id: str) -> Dict[str, Any]:
         resp = requests.get(f'{self.BASE_URL}/{batch_id}', headers=self._headers(), timeout=60)
