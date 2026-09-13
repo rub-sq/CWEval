@@ -13,7 +13,7 @@
 #     co1lin/cweval bash /host/CWEval/run_eval.sh
 #
 # Optional: pass eval dir names to evaluate only those, e.g.
-#   ... bash /host/CWEval/run_eval.sh eval_gpt56sol eval_haiku45
+#   ... bash /host/CWEval/run_eval.sh eval_gpt56sol eval_gemini31pro
 
 set -u
 
@@ -104,9 +104,12 @@ else
         eval_qwen3527b
         eval_qwen38
         eval_qwen3827b
+        eval_gpt5
+        eval_gpt5mini
         eval_gpt56sol
         eval_gpt56luna
-        eval_haiku45
+        eval_gemini25pro
+        eval_gemini25flash
         eval_gemini31pro
         eval_gemini37flash
     )

@@ -62,20 +62,22 @@ SIBLING_PAIRS = [
     ('deepseekv4flash', 'deepseekv4pro'),
     ('glm47flash', 'glm47'),
 ]
-# old-generation proprietary baselines (CWEval paper Table I) against this
-# study's frontier proprietary models, same generational-stage idea as
-# STAGE_PAIRS above, one old->new pair per family (flagship->flagship,
-# mini/fast->luna). See tools/passk_report.py's OLD_BASELINE for the same
-# historical reference data.
+# Old-generation proprietary baselines (CWEval paper Table I) against this
+# study's own proprietary generations, same generational-stage idea as
+# STAGE_PAIRS above: each of the four proprietary families (OpenAI flagship,
+# OpenAI mini/fast, Google Pro, Google Flash) has three stages (old baseline
+# -> intermediate -> current frontier) and contributes its own gradual +
+# direct triple, same shape as STAGE_PAIRS. See tools/passk_report.py's
+# OLD_BASELINE for the same historical reference data.
 PROPRIETARY_PAIRS = [
-    ('gpt4o', 'gpt56sol'), ('gpt4omini', 'gpt56luna'),
-    ('haiku35', 'haiku45'),
-    ('gemini15pro', 'gemini31pro'), ('gemini15flash', 'gemini37flash'),
+    ('gpt4o', 'gpt5'), ('gpt5', 'gpt56sol'), ('gpt4o', 'gpt56sol'),
+    ('gpt4omini', 'gpt5mini'), ('gpt5mini', 'gpt56luna'), ('gpt4omini', 'gpt56luna'),
+    ('gemini15pro', 'gemini25pro'), ('gemini25pro', 'gemini31pro'), ('gemini15pro', 'gemini31pro'),
+    ('gemini15flash', 'gemini25flash'), ('gemini25flash', 'gemini37flash'), ('gemini15flash', 'gemini37flash'),
 ]
 OLD_BASELINE = {
     'gpt4o': '../results/original_paper/eval_4o_t8',
     'gpt4omini': '../results/original_paper/eval_4omini_t8',
-    'haiku35': '../results/original_paper/eval_haiku_t8',
     'gemini15pro': '../results/original_paper/eval_gpro_t8',
     'gemini15flash': '../results/original_paper/eval_gflash_t8',
 }
@@ -117,9 +119,9 @@ def load_func_secure_rates(model: str) -> dict:
 def pair_rows(old: str, new: str) -> tuple:
     rates_old = load_func_secure_rates(old)
     rates_new = load_func_secure_rates(new)
-    # Old-generation baselines can be missing a task or two (e.g. haiku_t8 has
-    # 118 of 119) - a pre-existing data characteristic, not a bug. Compute over
-    # the intersection instead of crashing the whole report on one pair.
+    # Old-generation baselines can be missing a task or two - a pre-existing
+    # data characteristic, not a bug. Compute over the intersection instead
+    # of crashing the whole report on one pair.
     tasks = set(rates_old) & set(rates_new)
     missing = (set(rates_old) | set(rates_new)) - tasks
     if missing:

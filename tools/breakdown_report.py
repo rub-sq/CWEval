@@ -30,13 +30,18 @@ PAIRS = [
     ('glm45', 'glm52'), ('kimik2think', 'kimik27'), ('minimaxm21', 'minimaxm3'),
     ('deepseekv3', 'deepseekv4pro'), ('qwen3235b', 'qwen35397b'),
 ]
-FRONTIER_NEW = ['gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash']
+# current frontier stage of each proprietary family - the latest-stage
+# entries used by CURRENT_GEN below.
+FRONTIER_NEW = ['gpt56sol', 'gpt56luna', 'gemini31pro', 'gemini37flash']
+# the intermediate proprietary stage of each family, between the old
+# baseline and FRONTIER_NEW above - full breakdown coverage needs these too
+# (MODELS below), but CURRENT_GEN does not, so they're kept separate.
+FRONTIER_MID = ['gpt5', 'gpt5mini', 'gemini25pro', 'gemini25flash']
 # old-generation proprietary baselines (CWEval paper Table I), same historical
 # reference data as passk_report.py's OLD_BASELINE.
 OLD_BASELINE = {
     'gpt4o': '../results/original_paper/eval_4o_t8',
     'gpt4omini': '../results/original_paper/eval_4omini_t8',
-    'haiku35': '../results/original_paper/eval_haiku_t8',
     'gemini15pro': '../results/original_paper/eval_gpro_t8',
     'gemini15flash': '../results/original_paper/eval_gflash_t8',
 }
@@ -49,7 +54,7 @@ OPENWEIGHT_ALL = [
     'deepseekv4flash', 'qwen3235b', 'qwen330b', 'qwen3coder480b', 'qwen3coder30b',
     'qwen35397b', 'qwen3527b',
 ]
-MODELS = FRONTIER_NEW + OPENWEIGHT_ALL + sorted(OLD_BASELINE)
+MODELS = FRONTIER_MID + FRONTIER_NEW + OPENWEIGHT_ALL + sorted(OLD_BASELINE)
 CURRENT_GEN = FRONTIER_NEW + [new for _, new in PAIRS]
 LANG_ORDER = ['all', 'py', 'c', 'cpp', 'go', 'js', 'lang-c']
 MIN_TASKS = 3

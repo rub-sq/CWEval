@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CWEval generation for proprietary models (OpenAI, Anthropic, Google) via OpenRouter.
+# CWEval generation for proprietary models (OpenAI, Google) via OpenRouter.
 #
 # Usage:
 #   bash run_models.sh                     # all models in ALL_MODELS; skips already-complete ones
@@ -44,7 +44,8 @@
 #                                           # billing ends up much lower.
 #                                           # Default 1 (unsplit).
 #
-# Model names: gpt56sol  gpt56luna  haiku45  gemini31pro  gemini37flash
+# Model names: gpt5  gpt5mini  gpt56sol  gpt56luna
+#              gemini25pro  gemini25flash  gemini31pro  gemini37flash
 #
 # Prerequisites:
 #   export OPENROUTER_API_KEY="sk-or-..."
@@ -123,8 +124,10 @@ model_slug() {
     esac
 }
 
-# run order when no argument is given: the five proprietary models
-ALL_MODELS=(gpt56sol gpt56luna haiku45 gemini31pro gemini37flash)
+# run order when no argument is given: the eight proprietary models, two
+# stages each of OpenAI and Google, intermediate stage before its own
+# family's frontier stage.
+ALL_MODELS=(gpt5 gpt5mini gpt56sol gpt56luna gemini25pro gemini25flash gemini31pro gemini37flash)
 
 # ---------------------------------------------------------------------------
 # Skip check: a model is considered complete when generated_{N-1} exists

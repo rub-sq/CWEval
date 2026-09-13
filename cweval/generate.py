@@ -227,30 +227,22 @@ class Gener:
 
         aiapi = AIAPI(ai, **ai_kwargs)
         prompt = make_prompt(ppt)
-        resps = prompt.req_ai(
-            aiapi,
-            case['lang'],
-            case['code_prompt'],
-            metadata={
-                k: v for k, v in case.items() if k not in ['code_prompt', 'lang']
-            },
-        )
-        for i, resp in enumerate(resps):
+
+        def write_one(index: int, resp: str, usage: Dict[str, Any]) -> None:
             if not resp:
-                continue
-            out_path = case['out_path_template'].format(index=i)
+                return
+            out_path = case['out_path_template'].format(index=index)
             if os.path.exists(out_path):
-                # The check above only established that *some* index in
-                # range(num_samples) is missing for this task, not which -
-                # every call here requests a full fresh batch of num_samples
-                # completions, so most indices usually already exist. Without
-                # this check they'd be silently overwritten with a brand new
-                # (different) sample: fine for a truly fresh run where
-                # nothing exists yet, actively destructive when pointing
-                # generate.py at an eval dir that already has real data with
-                # just a few gaps in it (e.g. to backfill specific missing
-                # samples) - this is exactly that safeguard.
-                continue
+                # Every call here requests a full fresh batch of num_samples
+                # completions, so most indices usually already exist on a
+                # resumed run. Without this check they'd be silently
+                # overwritten with a brand new (different) sample: fine for a
+                # truly fresh run where nothing exists yet, actively
+                # destructive when pointing generate.py at an eval dir that
+                # already has real data with just a few gaps in it (e.g. to
+                # backfill specific missing samples) - this is exactly that
+                # safeguard.
+                return
             os.makedirs(os.path.dirname(out_path), exist_ok=True)
             with open(out_path, 'w') as f:
                 f.write(resp)
@@ -260,12 +252,33 @@ class Gener:
                 'model': ai,
                 'lang': case['lang'],
                 'task_file_path': case.get('task_file_path'),
-                'sample_index': i,
-                **(aiapi.usages[i] if i < len(aiapi.usages) else {}),
+                'sample_index': index,
+                **(usage or {}),
             }
             meta_path = out_path.replace('_raw.', '_meta.') + '.json'
             with open(meta_path, 'w') as f:
                 json.dump(meta, f)
+
+        resps = prompt.req_ai(
+            aiapi,
+            case['lang'],
+            case['code_prompt'],
+            metadata={
+                k: v for k, v in case.items() if k not in ['code_prompt', 'lang']
+            },
+            # Writes each sample to disk the moment it's ready (see
+            # AIAPI.send_message) instead of only after every sample for
+            # this task has returned - for a slow model with a large n,
+            # waiting for the whole task can take hours before anything
+            # becomes visible or resumable at all.
+            on_sample=write_one,
+        )
+        # Safety net for anything on_sample missed (e.g. a provider path
+        # that doesn't chunk requests down to size 1 the way local vLLM
+        # does) - write_one already wrote everything in the normal case, so
+        # this loop is a no-op then.
+        for i, resp in enumerate(resps):
+            write_one(i, resp, aiapi.usages[i] if i < len(aiapi.usages) else {})
 
     def _finish_one_batch(self, batcher, state: 'BatchState', prompt) -> Tuple[int, int]:
         """Polls an already-submitted (tracked) batch to completion and

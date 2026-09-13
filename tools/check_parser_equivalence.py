@@ -46,12 +46,16 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BENCH = os.path.join(REPO, 'benchmark')
 EVALS = os.path.join(REPO, 'evals')
 
-# the five proprietary models of this study.
+# the eight proprietary models of this study (two stages each of OpenAI and
+# Google).
 FRONTIER = [
+    'gpt5',
+    'gpt5mini',
     'gpt56sol',
     'gpt56luna',
+    'gemini25pro',
+    'gemini25flash',
     'gemini31pro',
-    'haiku45',
     'gemini37flash',
 ]
 

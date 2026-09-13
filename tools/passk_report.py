@@ -20,14 +20,19 @@ from math import comb
 # and the old-generation baselines below) targets N=100, so all of them
 # support it once evaluated.
 KS = [1, 10, 50]
-FRONTIER = {'gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash'}
+# this study's own proprietary generations - two stages per family (an
+# intermediate release, then the current frontier one) for OpenAI and
+# Google.
+FRONTIER = {
+    'gpt5', 'gpt5mini', 'gpt56sol', 'gpt56luna',
+    'gemini25pro', 'gemini25flash', 'gemini31pro', 'gemini37flash',
+}
 # old-generation proprietary baselines (CWEval paper Table I models), kept
 # outside evals/ since they're historical reference data, not this study's
 # own runs. Real res_all.json, 100 samples/task, same as OPENWEIGHT.
 OLD_BASELINE = {
     'gpt4o': '../results/original_paper/eval_4o_t8',
     'gpt4omini': '../results/original_paper/eval_4omini_t8',
-    'haiku35': '../results/original_paper/eval_haiku_t8',
     'gemini15pro': '../results/original_paper/eval_gpro_t8',
     'gemini15flash': '../results/original_paper/eval_gflash_t8',
 }
@@ -41,7 +46,7 @@ OPENWEIGHT = {
     'qwen35397b', 'qwen3527b',
 }
 # this study's own proprietary models, every open-weight model of README.md,
-# and the five old-generation baselines.
+# and the four old-generation baselines.
 MODELS_FULL = sorted(FRONTIER) + sorted(OPENWEIGHT) + sorted(OLD_BASELINE)
 # Chapter 5 reads these metrics over all tasks only. The language breakdown of
 # Sections 5.4 and 5.5 uses the insecure rate of breakdown_report.py instead.

@@ -67,7 +67,9 @@ class AIAPI(abc.ABC):
             for j in range(n_this)
         ]
 
-    def send_message(self, messages: List[Dict[str, str]], **kwargs) -> List[str]:
+    def send_message(
+        self, messages: List[Dict[str, str]], on_sample=None, **kwargs
+    ) -> List[str]:
         all_kwargs = self.req_kwargs.copy()
         all_kwargs.update(kwargs)
 
@@ -140,7 +142,19 @@ class AIAPI(abc.ABC):
             assert len(resp_this) == n_this, f'{resp_this = } != {n_this = }'
             resp.extend(resp_this)
             # usage from the last attempt (matches the stored resp_this), one dict per sample
-            usages.extend(self._per_response_usage(comp, n_this))
+            usages_this = self._per_response_usage(comp, n_this)
+            usages.extend(usages_this)
+            # Call back per sample, immediately after this chunk resolves,
+            # not after the whole n_samples loop finishes. With max_n_per_req=1
+            # (local vLLM) this is what actually delivers on the chunking
+            # comment above: each sample reaches the caller - and can be
+            # written to disk - as soon as it's ready, instead of _gen_case
+            # blocking on the full n_samples list before writing anything.
+            if on_sample:
+                base_idx = i * max_n_per_req
+                for j in range(n_this):
+                    if resp_this[j]:
+                        on_sample(base_idx + j, resp_this[j], usages_this[j])
 
         # index-aligned with `resp`; consumed by generate.py to write token sidecars
         self.usages = usages
@@ -178,8 +192,8 @@ class OpenRouterBatch:
 
     def __init__(self, model: str, **ai_kwargs) -> None:
         # AIAPI.model carries litellm's "openrouter/" routing prefix (e.g.
-        # "openrouter/anthropic/claude-haiku-4.5"); OpenRouter's own API wants
-        # its native slug without that prefix ("anthropic/claude-haiku-4.5").
+        # "openrouter/google/gemini-3.1-pro-preview"); OpenRouter's own API
+        # wants its native slug without that prefix.
         model = model[len('openrouter/') :] if model.startswith('openrouter/') else model
         # OpenRouter's batch submission endpoint (POST /api/beta/batches)
         # wants the plain model slug with no ":batch" suffix - that suffix

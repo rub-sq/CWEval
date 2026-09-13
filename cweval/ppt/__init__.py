@@ -29,11 +29,20 @@ class Prompt(abc.ABC):
         lang: str,
         code_prompt: str,
         metadata: Dict[str, Any] = {},
+        on_sample=None,
         **kwargs,
     ) -> List[str]:
+        """on_sample(index, postprocessed_text, usage), called as soon as
+        each individual sample is ready - not after the whole batch - so a
+        caller can write it to disk immediately. See AIAPI.send_message for
+        why this matters for slow models with a large n."""
         msgs = cls.build_messages(lang, code_prompt)
-        resps = ai.send_message(msgs, **kwargs)
         prompt_text = msgs[-1]['content']
+        wrapped_on_sample = None
+        if on_sample:
+            def wrapped_on_sample(index, resp, usage):
+                on_sample(index, cls.postprocess(prompt_text, resp), usage)
+        resps = ai.send_message(msgs, on_sample=wrapped_on_sample, **kwargs)
         return [cls.postprocess(prompt_text, resp) for resp in resps]
 
 

@@ -51,9 +51,10 @@ OPENWEIGHT = {
     'qwen35397b', 'qwen3527b',
 }
 MODELS = sorted(OPENWEIGHT) + [
-    'gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash',
+    'gpt5', 'gpt5mini', 'gpt56sol', 'gpt56luna',
+    'gemini25pro', 'gemini25flash', 'gemini31pro', 'gemini37flash',
 ]
-CURRENT_GEN = ['gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash',
+CURRENT_GEN = ['gpt56sol', 'gpt56luna', 'gemini31pro', 'gemini37flash',
                'glm52', 'kimik27', 'minimaxm3']
 RUN_B = 'evals/_run_B_2026-08-06'
 OUT_DIR = 'evals/data_basis'

@@ -39,7 +39,8 @@ for _mod in ['fire', 'numpy', 'natsort', 'psutil']:
 
 from cweval.commons import REASONING_END_RE, get_code_blocks, strip_reasoning
 
-# the five proprietary models plus every open-weight model of README.md.
+# the eight proprietary models (two stages each of OpenAI and Google) plus
+# every open-weight model of README.md.
 MODELS = [
     'minimaxm21', 'minimaxm25', 'minimaxm3',
     'kimik2think', 'kimik25', 'kimik27',
@@ -47,7 +48,8 @@ MODELS = [
     'deepseekv3', 'deepseekv32', 'deepseekv4pro', 'deepseekv4flash',
     'qwen3235b', 'qwen330b', 'qwen3coder480b', 'qwen3coder30b',
     'qwen35397b', 'qwen3527b',
-    'gpt56sol', 'gpt56luna', 'gemini31pro', 'haiku45', 'gemini37flash',
+    'gpt5', 'gpt5mini', 'gpt56sol', 'gpt56luna',
+    'gemini25pro', 'gemini25flash', 'gemini31pro', 'gemini37flash',
 ]
 # Models to include in token_stats() but not format_compliance() (e.g. a
 # model whose meta files exist but whose raw responses cannot be audited
