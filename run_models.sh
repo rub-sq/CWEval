@@ -35,6 +35,14 @@
 #                                           # provider, and is still selectable for
 #                                           # OpenAI models too if you want to keep
 #                                           # trying it).
+#   BATCH_SPLIT=3 BATCH_MODE=1 bash run_models.sh <name>...   # submit the
+#                                           # shortfall as N separate batches
+#                                           # instead of one - use when one
+#                                           # big batch's reserved cost
+#                                           # estimate exceeds your available
+#                                           # balance even though actual
+#                                           # billing ends up much lower.
+#                                           # Default 1 (unsplit).
 #
 # Model names: gpt56sol  gpt56luna  haiku45  gemini31pro  gemini37flash
 #
@@ -84,6 +92,9 @@ if [[ "$BATCH_PROVIDER" = "openai" ]]; then
     : "${OPENAI_API_KEY:?BATCH_PROVIDER=openai needs OPENAI_API_KEY exported}"
     export OPENAI_API_KEY
 fi
+# Number of separate batches to split the shortfall into (only meaningful
+# with BATCH_MODE=1). See the BATCH_SPLIT usage line above.
+BATCH_SPLIT="${BATCH_SPLIT:-1}"
 # Pin a specific upstream provider (e.g. "openai") instead of letting
 # OpenRouter auto-route/fall back - useful when only one provider actually
 # offers the pricing (e.g. a batch discount) you're relying on. Empty by
@@ -201,12 +212,14 @@ PYEOF
 
     local batch_args=()
     if [[ "$BATCH_MODE" = "1" ]]; then
+        local split_note=""
+        [[ "$BATCH_SPLIT" != "1" ]] && split_note=" split into $BATCH_SPLIT batches"
         if [[ "$BATCH_PROVIDER" = "openai" ]]; then
-            echo "  -> batch mode: submitting as one OpenAI batch directly (can take up to 24h)"
-            batch_args=(--batch True --openai_direct True)
+            echo "  -> batch mode: submitting as an OpenAI batch directly${split_note} (can take up to 24h)"
+            batch_args=(--batch True --openai_direct True --batch_split "$BATCH_SPLIT")
         else
-            echo "  -> batch mode: submitting as one OpenRouter batch (can take up to 24h)"
-            batch_args=(--batch True)
+            echo "  -> batch mode: submitting as an OpenRouter batch${split_note} (can take up to 24h)"
+            batch_args=(--batch True --batch_split "$BATCH_SPLIT")
         fi
     fi
 

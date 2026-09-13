@@ -24,7 +24,9 @@ evals
 
 import base64
 import datetime
+import glob
 import json
+import math
 import os
 import shutil
 from typing import Any, Dict, List, Tuple
@@ -75,6 +77,14 @@ class Gener:
         # Needs OPENAI_API_KEY in the environment; OPENROUTER_API_KEY is not
         # touched by this path at all.
         openai_direct: bool = False,
+        # Splits the missing samples into this many separate batches instead
+        # of one (only meaningful with batch=True). A provider can reserve
+        # the FULL estimated cost of one big batch against your balance up
+        # front, even though actual billing ends up far lower once the
+        # cheap/short responses come back - if that reservation alone
+        # exceeds what you have available, splitting into smaller batches
+        # each reserves less. 1 (default) is today's unsplit behavior.
+        batch_split: int = 1,
         # skips the "already exists, continue?" prompt below (used by
         # run_models.sh instead of piping 'y' into stdin)
         assume_yes: bool = False,
@@ -99,6 +109,7 @@ class Gener:
         self.num_proc = num_proc
         self.batch = batch
         self.openai_direct = openai_direct
+        self.batch_split = max(1, batch_split)
         self.assume_yes = assume_yes
         self.langs = langs
         self.exclude_path = exclude_path
@@ -256,13 +267,85 @@ class Gener:
             with open(meta_path, 'w') as f:
                 json.dump(meta, f)
 
+    def _finish_one_batch(self, batcher, state: 'BatchState', prompt) -> Tuple[int, int]:
+        """Polls an already-submitted (tracked) batch to completion and
+        writes its results. Shared by every batch, split or not. Takes an
+        already-constructed `batcher` (not a class) so submit and poll share
+        one instance instead of building a second one just to poll."""
+        batch_id, targets = state.load()
+
+        def on_tick(status: str, _data: Dict[str, Any]) -> None:
+            print(f'  batch {batch_id}: {status}', flush=True)
+
+        try:
+            final = batcher.poll_until_done(batch_id, on_tick=on_tick)
+        except RuntimeError:
+            # poll_until_done raises RuntimeError specifically for a terminal
+            # failed/expired/cancelled status - that batch_id is dead and
+            # will never complete. Clear the tracked state so the next
+            # invocation submits a fresh batch instead of resuming (and
+            # immediately re-failing on) this same dead one - without this,
+            # every retry just re-polls the same batch and gets the same
+            # terminal error forever, never actually retrying. A plain
+            # TimeoutError (still in_progress past MAX_WAIT_S) is not caught
+            # here: that batch may still complete on its own, so state stays
+            # tracked and a later invocation resumes polling it rather than
+            # submitting a wasteful duplicate.
+            state.clear()
+            raise
+        results = batcher.parse_results(final)
+
+        written = failed = 0
+        for cid, target in targets.items():
+            r = results.get(cid)
+            if not r or r.get('error') or not r.get('content'):
+                failed += 1
+                continue
+            resp = prompt.postprocess(target['prompt_text'], r['content'])
+            out_path = target['out_path']
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+            with open(out_path, 'w') as f:
+                f.write(resp)
+            meta = {
+                'model': self.model,
+                'lang': target['lang'],
+                'task_file_path': target['task_file_path'],
+                'sample_index': target['sample_index'],
+                **(r.get('usage') or {}),
+            }
+            meta_path = out_path.replace('_raw.', '_meta.') + '.json'
+            with open(meta_path, 'w') as f:
+                json.dump(meta, f)
+            written += 1
+
+        state.clear()
+        return written, failed
+
     def _gen_batch(self) -> None:
         # python cweval/generate.py gen --batch True --model openrouter/... --eval_path evals/eval_X
         # add --openai_direct True to submit via OpenAI's own Batch API
         # instead of OpenRouter's (needs OPENAI_API_KEY; see ai.py's
         # OpenAIBatch docstring for why this exists).
+        # add --batch_split N to submit the missing samples as N separate
+        # batches instead of one.
         prompt = make_prompt(self.ppt)
         num_samples = self.ai_kwargs.get('n', 1)
+
+        if self.openai_direct:
+            batcher_cls, label = OpenAIBatch, 'OpenAI'
+        else:
+            batcher_cls, label = OpenRouterBatch, 'OpenRouter'
+
+        n_parts = self.batch_split
+
+        # A batch from a split run that got interrupted mid-flight leaves
+        # its numbered state file behind, uncleared. Finish those first -
+        # before recomputing what's still missing below - so an interrupted
+        # chunk is never silently orphaned and resubmitted as a duplicate.
+        if n_parts > 1:
+            for path in sorted(glob.glob(os.path.join(self.eval_path, '.batch_state_*.json'))):
+                print(f'Finishing a batch left over from a previous run: {path}', flush=True)
+                self._finish_one_batch(batcher_cls(self.model, **self.ai_kwargs), BatchState(path), prompt)
 
         # Same per-task skip semantics as _gen_case (only the missing
         # samples), just gathered up front into one request array instead of
@@ -291,69 +374,33 @@ class Gener:
             print('All samples already exist, nothing to batch.', flush=True)
             return
 
-        state = BatchState(os.path.join(self.eval_path, '.batch_state.json'))
-        if self.openai_direct:
-            batcher_cls, label = OpenAIBatch, 'OpenAI'
-        else:
-            batcher_cls, label = OpenRouterBatch, 'OpenRouter'
-        batcher = batcher_cls(self.model, **self.ai_kwargs)
+        chunk_size = math.ceil(len(entries) / n_parts)
+        chunks = [entries[i:i + chunk_size] for i in range(0, len(entries), chunk_size)]
 
-        if state.exists():
-            print(f'Resuming batch tracked in {state.path}', flush=True)
-            batch_id, targets = state.load()
-        else:
-            print(f'Submitting {len(entries)} requests as one {label} batch...', flush=True)
-            batch_id = batcher.submit(entries)
-            state.save(batch_id, targets)
-            print(f'Submitted. batch_id={batch_id} (tracked in {state.path})', flush=True)
+        total_written = total_failed = 0
+        for idx, chunk in enumerate(chunks):
+            chunk_targets = {cid: targets[cid] for cid, _ in chunk}
+            state_path = (os.path.join(self.eval_path, '.batch_state.json') if n_parts == 1
+                          else os.path.join(self.eval_path, f'.batch_state_{idx}.json'))
+            state = BatchState(state_path)
+            batcher = batcher_cls(self.model, **self.ai_kwargs)
+            part_label = f' (part {idx + 1}/{len(chunks)})' if n_parts > 1 else ''
 
-        def on_tick(status: str, _data: Dict[str, Any]) -> None:
-            print(f'  batch {batch_id}: {status}', flush=True)
+            if not state.exists():
+                print(f'Submitting {len(chunk)} requests as one {label} batch{part_label}...',
+                      flush=True)
+                batch_id = batcher.submit(chunk)
+                state.save(batch_id, chunk_targets)
+                print(f'Submitted. batch_id={batch_id} (tracked in {state.path})', flush=True)
+            else:
+                print(f'Resuming batch tracked in {state.path}', flush=True)
 
-        try:
-            final = batcher.poll_until_done(batch_id, on_tick=on_tick)
-        except RuntimeError:
-            # poll_until_done raises RuntimeError specifically for a terminal
-            # failed/expired/cancelled status - that batch_id is dead and
-            # will never complete. Clear the tracked state so the next
-            # invocation submits a fresh batch instead of resuming (and
-            # immediately re-failing on) this same dead one - without this,
-            # every retry just re-polls the same batch and gets the same
-            # terminal error forever, never actually retrying. A plain
-            # TimeoutError (still in_progress past MAX_WAIT_S) is not caught
-            # here: that batch may still complete on its own, so state stays
-            # tracked and a later invocation resumes polling it rather than
-            # submitting a wasteful duplicate.
-            state.clear()
-            raise
-        results = batcher_cls.parse_results(final)
+            written, failed = self._finish_one_batch(batcher, state, prompt)
+            total_written += written
+            total_failed += failed
 
-        written = failed = 0
-        for cid, target in targets.items():
-            r = results.get(cid)
-            if not r or r.get('error') or not r.get('content'):
-                failed += 1
-                continue
-            resp = prompt.postprocess(target['prompt_text'], r['content'])
-            out_path = target['out_path']
-            os.makedirs(os.path.dirname(out_path), exist_ok=True)
-            with open(out_path, 'w') as f:
-                f.write(resp)
-            meta = {
-                'model': self.model,
-                'lang': target['lang'],
-                'task_file_path': target['task_file_path'],
-                'sample_index': target['sample_index'],
-                **(r.get('usage') or {}),
-            }
-            meta_path = out_path.replace('_raw.', '_meta.') + '.json'
-            with open(meta_path, 'w') as f:
-                json.dump(meta, f)
-            written += 1
-
-        state.clear()
         print(
-            f'Batch done: {written} written, {failed} failed/empty '
+            f'Batch done: {total_written} written, {total_failed} failed/empty '
             f'(rerun with the same --eval_path to retry just the gap).',
             flush=True,
         )
