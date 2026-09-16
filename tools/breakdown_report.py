@@ -72,6 +72,12 @@ def load(model):
 
 
 def write_csv(path, rows):
+    if not rows:
+        # e.g. dead_variants() legitimately returns [] when every task has
+        # at least one plausible sample somewhere - a good outcome, not an
+        # error, and there's no fieldnames to infer a header from.
+        print(f'  skip {path}: nothing to write (0 rows)')
+        return
     with open(path, 'w', newline='') as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         w.writeheader()
