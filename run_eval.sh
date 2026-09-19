@@ -186,7 +186,7 @@ if [ -z "$RESTORE_FROM" ]; then
     echo "=== regenerating CSV reports ===" | tee -a "$LOGDIR/master.log"
     python tools/passk_report.py      >> "$LOGDIR/master.log" 2>&1
     python tools/flip_report.py       >> "$LOGDIR/master.log" 2>&1
-    python tools/breakdown_report.py  >> "$LOGDIR/master.log" 2>&1
+    python tools/cvr_report.py        >> "$LOGDIR/master.log" 2>&1
     REPORTS="Regenerated from this pass: the CSV reports directly under evals/."
 else
     REPORTS="The CSV reports under evals/ belong to $RESTORE_FROM and were deliberately not regenerated."

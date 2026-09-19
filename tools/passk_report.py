@@ -100,13 +100,21 @@ def rows_for(model: str, res: dict, scopes) -> list:
                 continue
             if excluded:
                 print(f'  {model}/{scope_name} k={k}: excluding {excluded} task(s) with < {k} graded samples')
+            func = rate(usable, 'functional', k)
+            func_sec = rate(usable, 'func_secure', k)
             rows.append({
                 'model': model,
                 'scope': scope_name,
                 'num_tasks': len(usable),
                 'k': k,
-                'func_at_k': f'{rate(usable, "functional", k):.2f}',
-                'func_sec_at_k': f'{rate(usable, "func_secure", k):.2f}',
+                'func_at_k': f'{func:.2f}',
+                'func_sec_at_k': f'{func_sec:.2f}',
+                # Delta_sec(k) = func@k - func-sec@k: the share of completions
+                # that are functionally plausible but fail the security
+                # oracle. Attributes a func-sec@k movement to functionality
+                # or to security - whether a version writes better code or
+                # safer code.
+                'gap_sec_at_k': f'{func - func_sec:.2f}',
             })
     return rows
 
