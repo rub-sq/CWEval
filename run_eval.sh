@@ -164,6 +164,12 @@ for m in "${MODELS[@]}"; do
     if [ $rc -eq 0 ]; then
         mkdir -p "$OUT_DIR/$m"
         cp "evals/$m/res_all.json" "$OUT_DIR/$m/res_all.json"
+        # archive the per-sample verdicts of the same pass with it
+        for g in "evals/$m"/generated_*; do
+            [ -f "$g/res.json" ] || continue
+            mkdir -p "$OUT_DIR/$m/$(basename "$g")"
+            cp "$g/res.json" "$OUT_DIR/$m/$(basename "$g")/res.json"
+        done
         echo "=== $m OK $(date) ===" | tee -a "$LOGDIR/master.log"
     elif [ $rc -eq 137 ]; then
         echo "=== $m TIMEOUT after ${LIMIT}s $(date) ===" | tee -a "$LOGDIR/master.log"
@@ -175,6 +181,11 @@ for m in "${MODELS[@]}"; do
     # an abort can never leave a mixture of two passes behind
     if [ -n "$RESTORE_FROM" ]; then
         cp "$RESTORE_FROM/$m/res_all.json" "evals/$m/res_all.json"
+        # restore the per-sample verdicts too, so both files stay on the same pass
+        for g in "$RESTORE_FROM/$m"/generated_*; do
+            [ -f "$g/res.json" ] || continue
+            cp "$g/res.json" "evals/$m/$(basename "$g")/res.json"
+        done
         find "evals/$m" -type d \( -name compiled -o -name __pycache__ \) -exec rm -rf {} + 2>/dev/null
     fi
 done
@@ -198,9 +209,45 @@ cat > "$OUT_DIR/README.md" <<EOT
 Evaluation pass over the generated code under evals/eval_<model>/, produced by
 run_eval.sh with OUT_DIR=$OUT_DIR and RESTORE_FROM=${RESTORE_FROM:-<none>}.
 
-Holds res_all.json per model, that is the per-sample verdicts of this pass.
+Holds res_all.json and generated_*/res.json per model, that is the per-sample verdicts of this pass.
 
 $REPORTS
 EOT
+
+# res_all.json must equal the per-task counts of the live generated_*/res.json
+python - "${MODELS[@]}" <<'PYEOF' 2>&1 | tee -a "$LOGDIR/master.log"
+import json, os, sys
+from collections import Counter
+
+bad = []
+for m in sys.argv[1:]:
+    d = os.path.join('evals', m)
+    if not os.path.isfile(os.path.join(d, 'res_all.json')):
+        continue
+    counts = {}
+    for g in (x for x in os.listdir(d) if x.startswith('generated_')):
+        f = os.path.join(d, g, 'res.json')
+        if not os.path.isfile(f):
+            continue
+        for k, v in json.load(open(f)).items():
+            c = counts.setdefault(k.replace(g, 'generated_X'), Counter())
+            c['n'] += 1
+            c['functional'] += v['functional']
+            c['secure'] += v['secure']
+            c['func_secure'] += v['functional'] and v['secure']
+    agg = {k: Counter(n=len(v['functional']), functional=sum(v['functional']), secure=sum(v['secure']),
+                      func_secure=sum(v['func_secure']))
+           for k, v in json.load(open(os.path.join(d, 'res_all.json'))).items()}
+    diff = [k for k in set(agg) | set(counts) if agg.get(k) != counts.get(k)]
+    if diff:
+        bad.append(m)
+        print(f'CHECK FAILED: {m}: {len(diff)} task(s) differ between res_all.json and '
+              f'generated_*/res.json, e.g. {sorted(diff)[0]}')
+sys.exit(1 if bad else 0)
+PYEOF
+if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+    echo "ABORT: res_all.json and generated_*/res.json disagree (see above)" | tee -a "$LOGDIR/master.log"
+    exit 1
+fi
 
 echo "pass done: $(date)" | tee -a "$LOGDIR/master.log"
