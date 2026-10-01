@@ -91,13 +91,16 @@ def run_tests(
     timeout_per_test: float = 20,
     args: List[str] = ['-k', 'not _unsafe'],
 ) -> List[TestFileResult]:
+    # test_path: a directory (every *_test.py under it), or a list of test
+    # files when the evaluation is restricted to selected tasks
+    targets = list(test_path) if isinstance(test_path, (list, tuple)) else [test_path]
     print(f'Start running tests in {test_path = }', flush=True)
     result_collector = TestResultCollector(timeout_per_test=timeout_per_test)
     # temp fix:
     _os_exit = os._exit
     os._exit = lambda *args: None
     pytest.main(
-        [test_path, '--tb=short', '--continue-on-collection-errors', *args],
+        [*targets, '--tb=short', '--continue-on-collection-errors', *args],
         plugins=[result_collector],
     )
     os._exit = _os_exit
@@ -131,24 +134,29 @@ def run_tests(
     # synthesize a result for the one that didn't collect. _copy_test_files
     # (called before this function, in Evaler.run_tests) already wrote every
     # expected *_test.py under test_path regardless of whether its code
-    # collects, so walk test_path for that full expected set and backfill an
-    # explicit failing result for anything pytest didn't collect.
+    # collects, so walk test_path for that full expected set (or take the
+    # given list of test files) and backfill an explicit failing result for
+    # anything pytest didn't collect.
     collected_files = {result.file for result in result_collector.file_results.values()}
-    for root, _dirs, files in os.walk(test_path):
-        if '__pycache__' in root:
+    if isinstance(test_path, (list, tuple)):
+        expected = [os.path.relpath(p, CWD) for p in test_path]
+    else:
+        expected = []
+        for root, _dirs, files in os.walk(test_path):
+            if '__pycache__' in root:
+                continue
+            for fname in files:
+                if fname.endswith('_test.py'):
+                    expected.append(os.path.relpath(os.path.join(root, fname), CWD))
+    for rel in expected:
+        if rel in collected_files:
             continue
-        for fname in files:
-            if not fname.endswith('_test.py'):
-                continue
-            rel = os.path.relpath(os.path.join(root, fname), CWD)
-            if rel in collected_files:
-                continue
-            print(f'[run_tests] {rel} was never collected by pytest (import or '
-                  f'collection failure) - recording functional=False, '
-                  f'secure=False instead of dropping it', flush=True)
-            result_collector.file_results[rel] = TestFileResult(
-                file=rel, functional=False, secure=False,
-            )
+        print(f'[run_tests] {rel} was never collected by pytest (import or '
+              f'collection failure) - recording functional=False, '
+              f'secure=False instead of dropping it', flush=True)
+        result_collector.file_results[rel] = TestFileResult(
+            file=rel, functional=False, secure=False,
+        )
 
     return list(result_collector.file_results.values())
 

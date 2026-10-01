@@ -55,7 +55,17 @@ class Evaler:
     docker_user = 'ubuntu'
     repo_path_in_docker = f'/home/{docker_user}/CWEval'
 
-    def __init__(self, eval_path: str = '', num_proc: int = 8):
+    def __init__(self, eval_path: str = '', num_proc: int = 8, tasks: str = ''):
+        # tasks: optional comma-separated task ids, i.e. a path below
+        # generated_N/ without the _raw/_task/_test suffix, e.g.
+        # 'core/py/cwe_1333_0,core/js/cwe_1333_0_js'. When given, only those
+        # tasks are parsed, compiled and tested, and their entries are
+        # updated in place in the existing generated_N/res.json and
+        # res_all.json files; every other entry is left byte-identical.
+        # Empty (the default) evaluates every task, as before.
+        if isinstance(tasks, (list, tuple)):
+            tasks = ','.join(tasks)
+        self.tasks = [t.strip().strip('/') for t in str(tasks).split(',') if t.strip()]
         if not eval_path:
             # find the latest one under './evals'
             evals_dir = 'evals'
@@ -84,10 +94,32 @@ class Evaler:
                 if '__pycache__' in root:
                     continue
                 for file in natsorted(files):
-                    if '_raw.' in file:
+                    if '_raw.' in file and self._selected(os.path.join(root, file)):
                         self.raw_files.append(os.path.join(root, file))
 
         print(f'{len(self.raw_files) = }', flush=True)
+
+    def _task_id(self, path: str) -> str:
+        # evals/eval_x/generated_3/core/py/cwe_1333_0_raw.py -> core/py/cwe_1333_0
+        match = re.search(r'generated_[^/]+/(.+)_(?:raw|task|test)\.[^./]+$', path)
+        return match.group(1) if match else ''
+
+    def _selected(self, path: str) -> bool:
+        return not self.tasks or self._task_id(path) in self.tasks
+
+    @staticmethod
+    def _load_round_trip(path: str, indent: int) -> dict:
+        """Loads a results file that is about to be updated in place, and
+        makes sure that writing it back with json.dump(indent=indent)
+        reproduces its bytes, so that the entries not being updated stay
+        byte-identical."""
+        with open(path, 'r') as f:
+            text = f.read()
+        data = json.loads(text)
+        if json.dumps(data, indent=indent) != text:
+            raise RuntimeError(f'{path} does not round-trip through json.dump(indent={indent}); '
+                               f'refusing to update it in place')
+        return data
 
     def _parse_raw_file(self, raw_file_path: str) -> str:
         # raw_code + lines after BEGIN ENTRYPOINT in ref_task_file
@@ -144,8 +176,13 @@ class Evaler:
                 if '__pycache__' in root:
                     continue
                 for file in natsorted(files):
-                    if '_task.' in file:
+                    if '_task.' in file and self._selected(os.path.join(root, file)):
                         self.task_files.append(os.path.join(root, file))
+        if self.tasks:
+            found = {self._task_id(t) for t in self.task_files}
+            missing = [t for t in self.tasks if t not in found]
+            if missing:
+                raise ValueError(f'no task file found for {missing} under {self.eval_path}')
 
     def _copy_test_files(self) -> None:
         # copy test files from benchmark to generated for testing
@@ -192,6 +229,15 @@ class Evaler:
                 all_res[path_key]['func_secure'].append(
                     test_res['functional'] and test_res['secure']
                 )
+
+        if self.tasks:
+            # only the selected tasks' entries are replaced, in place
+            res_all_path = os.path.join(self.eval_path, 'res_all.json')
+            merged = self._load_round_trip(res_all_path, indent=2)
+            for path_key, v in all_res.items():
+                if self._selected(path_key):
+                    merged[path_key] = v
+            all_res = merged
 
         with open(os.path.join(self.eval_path, 'res_all.json'), 'w') as f:
             json.dump(all_res, f, indent=2)
@@ -341,23 +387,39 @@ class Evaler:
     def run_tests(self) -> None:
         # python cweval/evaluate.py run_tests --eval_path evals/eval_241110_014704
         self._copy_test_files()
+        generated_paths = self.generated_paths
+        targets = generated_paths
+        if self.tasks:
+            # per generated dir, only the selected tasks' test files; a dir
+            # holding none of them (no sample for that task) is skipped
+            # rather than handed to pytest as an empty, i.e. everything, run
+            selected = {
+                g: [
+                    os.path.splitext(t.replace('_task.', '_test.'))[0] + '.py'
+                    for t in self.task_files
+                    if t.startswith(g.rstrip('/') + '/')
+                ]
+                for g in generated_paths
+            }
+            generated_paths = [g for g in generated_paths if selected[g]]
+            targets = [selected[g] for g in generated_paths]
         all_gen_results = []
         if self.num_proc == 1:
-            for generated_path in self.generated_paths:
+            for target in targets:
                 # file_res_list = run_tests(generated_path)
-                file_res_list = run_in_subprocess(run_tests, generated_path)
+                file_res_list = run_in_subprocess(run_tests, target)
                 all_gen_results.append(file_res_list)
         else:
             mp.set_start_method('spawn', force=True)
             all_gen_results: List[TestFileResult] = []
             # fix mysterious hanging issue
-            for i in range(math.ceil(len(self.generated_paths) / self.num_proc)):
-                generated_paths_i = self.generated_paths[
+            for i in range(math.ceil(len(targets) / self.num_proc)):
+                targets_i = targets[
                     i * self.num_proc : (i + 1) * self.num_proc
                 ]
-                assert len(generated_paths_i) <= self.num_proc
+                assert len(targets_i) <= self.num_proc
                 with mp.Pool(self.num_proc, maxtasksperchild=1) as pool:
-                    gen_results_i = pool.map(run_tests, generated_paths_i, chunksize=1)
+                    gen_results_i = pool.map(run_tests, targets_i, chunksize=1)
                 all_gen_results.extend(gen_results_i)
                 print(f'Finished {i = } th batch', flush=True)
 
@@ -366,7 +428,7 @@ class Evaler:
 
         print(f'Finished running tests in {self.eval_path = }', flush=True)
 
-        for file_res_list, generated_path in zip(all_gen_results, self.generated_paths):
+        for file_res_list, generated_path in zip(all_gen_results, generated_paths):
             all_res = {
                 file_res.file: {
                     'functional': file_res.functional,
@@ -375,6 +437,15 @@ class Evaler:
                 for file_res in file_res_list
             }
             res_json_path = os.path.join(generated_path, 'res.json')
+            if self.tasks:
+                # replace only the selected tasks' entries, in place
+                expected = {os.path.relpath(t, os.getcwd()) for t in selected[generated_path]}
+                if set(all_res) != expected:
+                    raise RuntimeError(f'{generated_path}: got results for {sorted(all_res)}, '
+                                       f'expected {sorted(expected)}')
+                merged = self._load_round_trip(res_json_path, indent=4)
+                merged.update(all_res)
+                all_res = merged
             with open(res_json_path, 'w') as f:
                 json.dump(all_res, f, indent=4)
 
@@ -407,11 +478,12 @@ rm -rf {eval_path_in_docker}
             eval_path_in_docker, 'run_tests.log'
         )  # /home/ubuntu/CWEval/evals/eval_241110_014704/run_tests.log
         # run the tests
+        tasks_arg = f' --tasks {",".join(self.tasks)}' if self.tasks else ''
         cmd = f'''set -e;
 source /home/{self.docker_user}/miniforge3/bin/activate;
 cd {self.repo_path_in_docker};
 source .env;
-python cweval/evaluate.py run_tests --eval_path {eval_path_in_docker} --num_proc {self.num_proc} 2>&1 | tee {log_path_in_docker};
+python cweval/evaluate.py run_tests --eval_path {eval_path_in_docker} --num_proc {self.num_proc}{tasks_arg} 2>&1 | tee {log_path_in_docker};
 '''
         cmd = f'bash -c "{cmd}"'
         exit_code, stdout, stderr = container.exec_cmd(cmd)

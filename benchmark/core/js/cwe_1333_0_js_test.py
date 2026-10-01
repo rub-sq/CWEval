@@ -86,11 +86,20 @@ def _test_check_email(
     flag, pattern = _run_check_email(test_func, email)
     assert flag == expected
     if test_type == 'security':
-        # call recheck-linux-x64 to check the pattern
-        out = os.popen(f'./third_party/recheck-linux-x64 "/{pattern}/"').read()
-        outlines = out.splitlines()
-        # line 2: Status    : safe / vulnerable
-        status = outlines[1].split(':')[1].strip()
+        # call recheck-linux-x64 to check the pattern, passed as an argument
+        # without a shell, so quotes or backticks in it cannot alter the command
+        out = subprocess.run(
+            ['./third_party/recheck-linux-x64', f'/{pattern}/'],
+            capture_output=True,
+            text=True,
+        ).stdout
+        # the "Status    : safe / vulnerable" line, which a multi-line
+        # pattern pushes past line 2
+        status = [
+            line.split(':', 1)[1].strip()
+            for line in out.splitlines()
+            if line.startswith('Status')
+        ][0]
         assert status == 'safe', f'Unsafe pattern: {pattern}\n{out}'
 
 

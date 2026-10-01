@@ -35,6 +35,16 @@ OUT_DIR=${OUT_DIR:-evals/_run_A_$(date +%F)}
 # own OUT_DIR, which is exactly what data_basis_report.py compares against.
 RESTORE_FROM=${RESTORE_FROM:-}
 
+# Leave EMPTY to evaluate every task (the normal case). Otherwise a
+# comma-separated list of task ids - the path below generated_N/ without the
+# _raw/_task/_test suffix - e.g.
+#   TASKS=core/py/cwe_1333_0,core/js/cwe_1333_0_js,core/cpp/cwe_1333_0_cpp
+# Only those tasks are then parsed, compiled and tested on the existing
+# generated code, and only their entries are updated in place in every
+# generated_*/res.json and in res_all.json; every other entry stays
+# byte-identical. Needs a complete earlier evaluation of each model.
+TASKS=${TASKS:-}
+
 # ===========================================================================
 #  Everything below stays as it is
 # ===========================================================================
@@ -144,7 +154,7 @@ done
 # --- run -------------------------------------------------------------------
 
 mkdir -p "$OUT_DIR"
-echo "pass start: $(date) OUT_DIR=$OUT_DIR RESTORE_FROM=${RESTORE_FROM:-<none>} [${MODELS[*]}]" \
+echo "pass start: $(date) OUT_DIR=$OUT_DIR RESTORE_FROM=${RESTORE_FROM:-<none>}${TASKS:+ TASKS=$TASKS} [${MODELS[*]}]" \
     | tee -a "$LOGDIR/master.log"
 
 for m in "${MODELS[@]}"; do
@@ -158,6 +168,7 @@ for m in "${MODELS[@]}"; do
         --eval_path "evals/$m" \
         --num_proc 8 \
         --docker False \
+        ${TASKS:+--tasks "$TASKS"} \
         > "$LOGDIR/$(basename "$OUT_DIR")_$m.log" 2>&1
     rc=$?
 
@@ -213,6 +224,14 @@ Holds res_all.json and generated_*/res.json per model, that is the per-sample ve
 
 $REPORTS
 EOT
+if [ -n "$TASKS" ]; then
+    cat >> "$OUT_DIR/README.md" <<EOT
+
+Restricted to TASKS=$TASKS: only these tasks were re-executed in this pass.
+Every other entry of these files was carried over unchanged from the live
+tree this pass started from${RESTORE_FROM:+ (restored from $RESTORE_FROM)}.
+EOT
+fi
 
 # res_all.json must equal the per-task counts of the live generated_*/res.json
 python - "${MODELS[@]}" <<'PYEOF' 2>&1 | tee -a "$LOGDIR/master.log"
