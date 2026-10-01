@@ -114,6 +114,13 @@ log "building the scratch tree from results/ and backups/:"
 python3 tools/cwe1333_rerun_check.py prepare "$STUDY" "$WORK" "${MODELS[@]}" 2>&1 | tee -a "$LOG"
 [ "${PIPESTATUS[0]}" -eq 0 ] || { log "preparation failed, results/ untouched"; exit 1; }
 
+# the container runs as its own user (ubuntu), which on Linux may have a
+# different uid than the host user who just built the scratch tree
+chmod -R a+rwX "$WORK"
+"${DOCKER_RUN[@]}" "$IMAGE" bash -c "mkdir -p /host/CWEval/evals/eval_logs && touch /host/CWEval/evals/${MODELS[0]}/generated_0/.w && rm /host/CWEval/evals/${MODELS[0]}/generated_0/.w" >> "$LOG" 2>&1 \
+    || { log "the container cannot write to the scratch tree $WORK - results/ untouched"; exit 1; }
+log "the container can write to the scratch tree"
+
 # --- the three passes ----------------------------------------------------------
 
 run_pass() {  # name out_dir restore_from (paths as the container sees them)
