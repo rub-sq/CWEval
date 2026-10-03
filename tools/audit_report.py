@@ -1,4 +1,4 @@
-"""Findings that no other script of this thesis produces.
+"""Findings that no other script of this paper produces.
 
   format_compliance.csv  per model: visible reasoning sections and multiple
                          code blocks (Section 3.7), and the responses whose

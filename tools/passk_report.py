@@ -1,4 +1,4 @@
-"""Export func@k / func-sec@k for the thesis as CSV.
+"""Export func@k / func-sec@k for the paper as CSV.
 
 Reads evals/eval_<model>/res_all.json (must exist, i.e. the evaluation
 pipeline has already been run) and writes

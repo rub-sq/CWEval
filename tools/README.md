@@ -1,6 +1,6 @@
 # Scripts
 
-Everything written for the thesis, in the order the study ran. All paths are
+Everything written for the paper, in the order the study ran. All paths are
 relative to the repository root. The three shell scripts drive the experiments
 and need the evaluation container; the Python scripts read the stored results
 and are read-only regarding the evaluation data.
@@ -44,7 +44,7 @@ individual artifacts, selected by the criteria of Section 4.8 from the values
 already reported in Sections 5.4 and 5.5, and each artifact was read directly
 from the corresponding `generated_N/res.json`.
 
-Scripts shipped with CWEval and not written for this thesis: `rmc.sh`,
-`table_report.py`, `test_all.sh`. Written for this thesis but committed with
+Scripts shipped with CWEval and not written for this paper: `rmc.sh`,
+`table_report.py`, `test_all.sh`. Written for this paper but committed with
 the framework changes rather than here: `token_report.py`, which produces the
 per-model and per-language token averages that Section 3.7 refers to.

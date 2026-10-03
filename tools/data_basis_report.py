@@ -1,4 +1,4 @@
-"""Data basis of the evaluation: everything Section 5.1 of the thesis reports.
+"""Data basis of the evaluation: everything Section 5.1 of the paper reports.
 
 Produces
   coverage.csv        raw, graded and dropped samples per model, the share

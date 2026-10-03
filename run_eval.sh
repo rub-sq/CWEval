@@ -4,7 +4,7 @@
 # The script evaluates every eval dir with the same pipeline version, archives
 # the per-sample verdicts of this pass into OUT_DIR and writes a README next to
 # them. Run it twice with two different OUT_DIR values and you get two runs over
-# the same generated code, which is what Section 4.4 of the thesis compares to
+# the same generated code, which is what Section 4.4 of the paper compares to
 # obtain the reporting thresholds.
 #
 # Runs INSIDE the co1lin/cweval container, against the repo mounted at /host/CWEval:
