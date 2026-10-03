@@ -3,7 +3,7 @@
 # (recheck called without a shell), for all 32 models of the study, and
 # writes the new verdicts into the study repository's results/ - the parent
 # of this CWEval checkout (../results, with the generated code read from
-# ../backups/<source>/<eval>.zip).
+# ../raw_data/<source>/<eval>.zip).
 #
 # Same three-pass procedure as the original evaluation (run_eval.sh), in a
 # scratch tree that is mounted into the container as evals/:
@@ -85,7 +85,7 @@ case "$(uname -m)" in
     *) [ "${ALLOW_NON_AMD64:-0}" = 1 ] || die "host is $(uname -m), not amd64: run this on the tower" ;;
 esac
 command -v python3 >/dev/null || die "python3 not found on the host"
-[ -d "$STUDY/results" ] && [ -d "$STUDY/backups" ] || die "$STUDY has no results/ and backups/ - run this from the cweval/ submodule of the study repository"
+[ -d "$STUDY/results" ] && [ -d "$STUDY/raw_data" ] || die "$STUDY has no results/ and raw_data/ - run this from the cweval/ submodule of the study repository"
 arch=$(docker image inspect "$IMAGE" --format '{{.Architecture}}' 2>/dev/null) || die "image $IMAGE not found"
 [ "$arch" = amd64 ] || die "image $IMAGE is $arch; recheck-linux-x64 only runs in the linux/amd64 build"
 for t in benchmark/core/py/cwe_1333_0_test.py benchmark/core/js/cwe_1333_0_js_test.py \
@@ -110,7 +110,7 @@ smoke=$("${DOCKER_RUN[@]}" "$IMAGE" bash -c 'cd /host/CWEval && ./third_party/re
 echo "$smoke" | grep -q '^Status *: *safe' || { log "recheck smoke test failed inside $IMAGE:"; log "$smoke"; exit 1; }
 log "recheck runs inside the container"
 
-log "building the scratch tree from results/ and backups/:"
+log "building the scratch tree from results/ and raw_data/:"
 python3 tools/cwe1333_rerun_check.py prepare "$STUDY" "$WORK" "${MODELS[@]}" 2>&1 | tee -a "$LOG"
 [ "${PIPESTATUS[0]}" -eq 0 ] || { log "preparation failed, results/ untouched"; exit 1; }
 

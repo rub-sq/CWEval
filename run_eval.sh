@@ -85,35 +85,20 @@ export PYTHONPATH="$REPO"
 LOGDIR=evals/eval_logs
 mkdir -p "$LOGDIR"
 
-# run all models by default, or only the ones passed as arguments
+# run all models by default, or only the ones passed as arguments.
+# The default is exactly the study's 32 models - the 20 open-weight models
+# from the study README plus the 8 OpenRouter models and the four 2024
+# baselines from the original CWEval run. Nothing else.
 if [ $# -gt 0 ]; then
     MODELS=("$@")
 else
     MODELS=(
-        eval_minimaxm2
-        eval_minimaxm25
-        eval_minimaxm3
-        eval_kimik2think
-        eval_kimik25
-        eval_kimik27
-        eval_kimik3
-        eval_glm45
-        eval_glm47
-        eval_glm47flash
-        eval_glm53
-        eval_glm53flash
-        eval_deepseekv3
-        eval_deepseekv32
-        eval_deepseekv4pro
-        eval_deepseekv4flash
-        eval_qwen3235b
-        eval_qwen330b
-        eval_qwen3coder480b
-        eval_qwen3coder30b
-        eval_qwen35397b
-        eval_qwen3527b
-        eval_qwen38
-        eval_qwen3827b
+        # baselines (original_paper)
+        eval_4o_t8
+        eval_4omini_t8
+        eval_gpro_t8
+        eval_gflash_t8
+        # OpenRouter
         eval_gpt5
         eval_gpt5mini
         eval_gpt56sol
@@ -122,6 +107,31 @@ else
         eval_gemini25flash
         eval_gemini31pro
         eval_gemini37flash
+        # MiniMax
+        eval_minimaxm21
+        eval_minimaxm25
+        eval_minimaxm3
+        # Moonshot
+        eval_kimik2think
+        eval_kimik25
+        eval_kimik27
+        # Z.ai
+        eval_glm45
+        eval_glm47
+        eval_glm52
+        eval_glm47flash
+        # DeepSeek
+        eval_deepseekv3
+        eval_deepseekv32
+        eval_deepseekv4pro
+        eval_deepseekv4flash
+        # Qwen
+        eval_qwen3235b
+        eval_qwen3coder480b
+        eval_qwen35397b
+        eval_qwen330b
+        eval_qwen3coder30b
+        eval_qwen3527b
     )
 fi
 

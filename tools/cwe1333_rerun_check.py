@@ -1,6 +1,6 @@
 """Helper of run_cwe1333_rerun.sh: re-evaluation of the three cwe_1333_0
 variants with the fixed ReDoS oracle against the study repository's
-results/ and backups/ (the parent of this CWEval checkout). Standard library
+results/ and raw_data/ (the parent of this CWEval checkout). Standard library
 only, runs on the host.
 
   prepare <study_repo> <work> <eval_name>...
@@ -9,7 +9,7 @@ only, runs on the host.
       generated_*/res.json, which must round-trip byte-exactly through
       json.dump so that the in-place update keeps every other entry
       byte-identical) and the generated code of the three tasks, extracted
-      from backups/<source>/<eval_name>.zip
+      from raw_data/<source>/<eval_name>.zip
   verify <study_repo> <work> <pass_A> <pass_B> <pass_C> <eval_name>...
       after the three passes, against the untouched results/: (1) functional
       verdicts of the three tasks unchanged, (2) every entry of the other
@@ -76,7 +76,7 @@ def prepare(study, work, names):
         src = source_of(study, name)
         res_dir = os.path.join(study, 'results', src, name)
         problems, n_code = [], 0
-        with zipfile.ZipFile(os.path.join(study, 'backups', src, f'{name}.zip')) as zf:
+        with zipfile.ZipFile(os.path.join(study, 'raw_data', src, f'{name}.zip')) as zf:
             members = set(zf.namelist())
             for rel, indent in result_files(res_dir):
                 text = read(os.path.join(res_dir, rel))
